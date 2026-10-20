@@ -1,5 +1,5 @@
 """
-Tiny From Scratch - AI Project with Multi-Modal Capabilities
+Tiny From Scratch - AI Project with Multi-Modal Capabilities and AGI Core
 
 A comprehensive AI project featuring:
 - Voice-to-voice conversation with STT and TTS
@@ -8,12 +8,18 @@ A comprehensive AI project featuring:
 - Desktop automation
 - Self-healing code
 - Safe-mode guardrails
+- AGI Core (Artificial General Intelligence)
+  - Reasoning Engine (Chain-of-Thought, Tree-of-Thoughts)
+  - Memory System (Short-term, Long-term, Episodic)
+  - Planning & Decision Making
+  - World Model (Knowledge Graph, Spatial, Temporal, Causal)
+  - Meta-Learning (Self-improvement, Strategy Optimization)
 
 Based on the "Tiny From Scratch" educational GPT project,
-extended with modern AI capabilities.
+extended with modern AI capabilities and AGI Core.
 """
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 import sys
 import os
