@@ -1,1 +1,17 @@
 torch>=2.2
+torchvision
+numpy
+transformers
+fastapi
+uvicorn
+python-multipart
+websockets
+openai-whisper
+pyttsx3
+pyaudio
+opencv-python
+psutil
+pywin32  # Windows
+pyobjc  # macOS
+pyautogui
+python-dotenv
