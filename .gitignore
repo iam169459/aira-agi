@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Model artifacts and large datasets
+tiny_model.pt
+*.pt
+*.pth
+data-private.txt
+datasets/
+checkpoints/
+
+# macOS
+.DS_Store

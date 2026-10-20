@@ -1,0 +1,12 @@
+A language model learns patterns from a sequence of characters.
+A transformer uses attention to process context.
+Python is a programming language used for machine learning.
+Training changes model parameters to reduce prediction error.
+A good dataset contains clean, diverse, relevant examples.
+A small model can learn simple patterns but has limited capacity.
+Neural networks use optimization to improve their predictions.
+Software should be tested before it is used in important applications.
+A dataset is split into training data and validation data.
+A training loop repeats prediction, loss calculation, and optimization.
+A model trained on a tiny dataset will not become a general assistant.
+The purpose of this project is to understand language model training.
