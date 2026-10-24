@@ -228,7 +228,12 @@ class EmotionAwareAI:
             try:
                 # In a real implementation, this would capture from microphone
                 # For now, simulate with text input
-                user_input = input("\nYou: ")
+                try:
+                    user_input = input("\nYou: ")
+                except EOFError:
+                    print("\nAI: End of input. Goodbye!")
+                    self.running = False
+                    break
                 
                 if user_input.lower() in ['exit', 'quit', 'goodbye']:
                     print("AI: Goodbye! Have a great day!")
@@ -239,8 +244,11 @@ class EmotionAwareAI:
                 response = self.converse(user_input)
                 print(f"AI: {response}")
                 
-                # Speak response
-                self.tts.speak_immediate(response)
+                try:
+                    # Speak response
+                    self.tts.speak_immediate(response)
+                except Exception:
+                    pass
                 
             except KeyboardInterrupt:
                 print("\nAI: Interrupted. Goodbye!")
@@ -248,7 +256,10 @@ class EmotionAwareAI:
             except Exception as e:
                 print(f"Error: {e}")
                 # Attempt self-healing
-                self.healer.attempt_fix(e, "voice_loop")
+                try:
+                    self.healer.attempt_fix(e, "voice_loop")
+                except Exception:
+                    pass
                 time.sleep(0.5)
 
 
@@ -275,14 +286,28 @@ def main():
         # Text-only mode
         print("Text mode active. Type 'exit' to quit.")
         while True:
-            user_input = input("\nYou: ")
-            if user_input.lower() in ['exit', 'quit']:
+            try:
+                user_input = input("\nYou: ")
+                if user_input.lower() in ['exit', 'quit']:
+                    break
+                response = ai.converse(user_input)
+                print(f"AI: {response}")
+            except EOFError:
                 break
-            response = ai.converse(user_input)
-            print(f"AI: {response}")
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                print(f"Error: {e}")
+                break
     else:
         # Voice mode
-        ai.start_voice_loop()
+        try:
+            ai.start_voice_loop()
+        except EOFError:
+            pass
+        except Exception as e:
+            print(f"Error: {e}")
+            pass
 
 
 if __name__ == "__main__":

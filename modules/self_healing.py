@@ -149,7 +149,9 @@ class SelfHealingCode:
         """
         self.fix_attempts += 1
         if self.fix_attempts > self.max_fix_attempts:
-            print("Max fix attempts reached, stopping")
+            # Don't spam the message
+            if self.fix_attempts == self.max_fix_attempts + 1:
+                print("Max fix attempts reached, stopping")
             return False
         
         error_info = self.capture_error(error, context)

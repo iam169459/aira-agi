@@ -14,7 +14,7 @@ transformer model and Purple AI's emotion, perception, and automation capabiliti
 """
 
 __version__ = "1.0.0"
-AGI_NAME = "TinyAGI"
+AGI_NAME = "Aira"
 
 from .reasoning import ReasoningEngine, ThoughtChain, ReflectionEngine
 from .memory import MemorySystem, ShortTermMemory, LongTermMemory, EpisodicMemory
