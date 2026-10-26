@@ -6,19 +6,19 @@ from torch.nn import functional as F
 
 torch.manual_seed(42)
 
-DATA_FILE = "data.txt"
+DATA_FILE = "code_corpus.txt"
 CHECKPOINT = "tiny_model.pt"
 
 # Conservative starter settings for a 16 GB Mac.
-BLOCK_SIZE = 64
-BATCH_SIZE = 8
-MAX_STEPS = 500
-EVAL_EVERY = 100
+BLOCK_SIZE = 2048
+BATCH_SIZE = 1
+MAX_STEPS = 1000
+EVAL_EVERY = 200
 LEARNING_RATE = 3e-4
 
-N_EMBD = 96
-N_HEAD = 4
-N_LAYER = 3
+N_EMBD = 1440
+N_HEAD = 16
+N_LAYER = 16
 DROPOUT = 0.1
 
 if not os.path.exists(DATA_FILE):
