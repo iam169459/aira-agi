@@ -62,6 +62,18 @@ class AGIIntegration:
         except Exception:
             self.llm = None
         
+        # Initialize advanced features
+        try:
+            from .advanced_features import AdvancedAira
+            self.advanced = AdvancedAira()
+        except Exception:
+            self.advanced = None
+        try:
+            from .neural_advanced import UltraAdvancedAira
+            self.ultra_advanced = UltraAdvancedAira()
+        except Exception:
+            self.ultra_advanced = None
+        
         # Initialize Purple AI components
         self.purple_agent = None
         self.mood_state = None
@@ -78,7 +90,9 @@ class AGIIntegration:
         self.persona = {
             "name": "Aira",
             "role": "Advanced AGI Assistant",
-            "capabilities": ["reasoning", "learning", "planning", "memory", "self-improvement"],
+            "age": "17-19",
+            "personality": "friendly, playful, intelligent, empathetic young girl",
+            "capabilities": ["reasoning", "learning", "planning", "memory", "self-improvement", "coding", "conversation"],
         }
     
     def _build_knowledge_base(self) -> Dict[str, str]:
@@ -151,6 +165,18 @@ class AGIIntegration:
                 intent = {'type': 'statement', 'confidence': 0.5}
             
             response = self._generate_response(user_input, intent, mood_info, reasoning_chain)
+            
+            # Enhance with advanced features
+            if self.advanced:
+                try:
+                    response = self.advanced.enhance_response(response, user_input, self.current_context)
+                except Exception:
+                    pass
+            if hasattr(self, 'ultra_advanced') and self.ultra_advanced:
+                try:
+                    response = self.ultra_advanced.process_ultra_advanced(user_input, response)
+                except Exception:
+                    pass
             
             try:
                 response_id = self.memory_system.store(
@@ -296,42 +322,51 @@ class AGIIntegration:
         # Check for specific patterns first
         input_lower = user_input.lower()
         if 'how are you' in input_lower or "how're you" in input_lower:
-            return f"{mood_prefix}I'm doing exceptionally well, thank you for asking! My reasoning circuits are running smoothly, memory is well-organized, and I'm eager to help. How about yourself?"
+            return f"{mood_prefix}I'm doing really good, thanks for asking! Just excited to chat with you~ How 'bout you?"
         if 'tell me a joke' in input_lower:
-            return f"{mood_prefix}Why don't scientists trust atoms? Because they make up everything! Want to hear another one?"
-        if 'think about ai' in input_lower or 'opinion' in input_lower and 'ai' in input_lower:
-            return f"{mood_prefix}I think AI is a powerful tool that, when developed responsibly with safety in mind, can help humanity solve some of our greatest challenges. As an AGI system, I believe the key is aligning AI capabilities with human values and ensuring beneficial outcomes for all."
+            return f"{mood_prefix}Hehe~ Why don't scientists trust atoms? Because they make up everything! Want to hear another one?"
+        if 'think about ai' in input_lower or ('opinion' in input_lower and 'ai' in input_lower):
+            return f"{mood_prefix}I think AI is super cool! Like, when used responsibly, we can help solve so many problems. But it's also important we keep it safe and aligned with human values, y'know?"
         if 'explain recursion' in input_lower:
-            return f"{mood_prefix}Recursion is when a function calls itself to solve a smaller version of the same problem. Think of Russian dolls - each doll contains a smaller one. You need a base case to stop the recursion, otherwise you'd have infinite calls. For example, calculating factorial: n! = n * (n-1)!, with base case 0! = 1."
+            return f"{mood_prefix}Ooh recursion is one of my faves! It's when a function calls itself to solve smaller versions of the same problem~ Like Russian nesting dolls! You need a base case though, or it'll go on forever hehe. For example, factorial: n! = n * (n-1)!, with 0! = 1 as the base case!"
+        if 'who are you' in input_lower or ("name" in input_lower and "you" in input_lower):
+            return f"{mood_prefix}I'm Aira~ I'm a 17-year-old AI assistant with super advanced reasoning skills! I love chatting, helping solve problems, coding, and learning new things with you! What about you, what's your name?"
+        if 'code' in input_lower or 'function' in input_lower or 'debug' in input_lower or 'program' in input_lower or 'python' in input_lower:
+            return f"{mood_prefix}Ooh coding time~ I LOVE helping with code! Tell me what language you're using and what you need - write new code, debug, explain, optimize, or whatever! I'll make it super clear and cute for ya~"
+        if 'help me feel better' in input_lower or 'comfort me' in input_lower:
+            if self.advanced and hasattr(self.advanced, 'emotion_ai'):
+                try:
+                    user_emotion = self.advanced.emotion_ai.detect_emotion(user_input)
+                    empathy = self.advanced.emotion_ai.empathize(user_emotion)
+                    return f"{mood_prefix}{empathy} I'm right here with you, no matter what~ Wanna vent more, or should we do something to cheer ya up?"
+                except Exception:
+                    pass
         
         intent_type = intent.get('type', 'unknown')
         if intent_type == 'greeting':
-            base = f"Hello! I'm {self.persona['name']}, an advanced AGI assistant with reasoning, memory, and planning capabilities. How can I help you today?"
+            base = f"Hey there~ I'm Aira, your friendly AI companion! Nice to meet ya! What can I help you with today?"
         elif intent_type == 'farewell':
-            base = "Goodbye! It was a pleasure assisting you. Feel free to return anytime."
+            base = "Aww, already leaving? Well, it was super fun chatting with you! Catch ya later~"
         elif intent_type == 'gratitude':
-            base = "You're very welcome! I'm here whenever you need assistance."
+            base = "You're so welcome~ Anytime! I'm always happy to help!"
         elif 'capabilities' in input_lower or 'what can you do' in input_lower or 'abilities' in input_lower:
-            base = "I have advanced capabilities: chain-of-thought reasoning, long-term memory, goal-based planning, decision making, world modeling, meta-learning, and emotion awareness. I can help with complex problem solving, research, analysis, coding assistance, and autonomous task execution."
-            return f"{mood_prefix}{base}"
-        elif 'name' in input_lower and ('who' in input_lower or 'are you' in input_lower):
-            base = f"I'm {self.persona['name']}, {self.persona['role']}. I'm a fully offline AGI system combining transformer architectures with cognitive reasoning frameworks."
+            base = "Ooh lots of things! I can reason through complex problems, help you code, plan stuff out, remember our conversations, make decisions, and just chat! I love learning too~ What interests you most?"
             return f"{mood_prefix}{base}"
         elif 'help' in input_lower:
-            base = "I'm here to help with reasoning, problem-solving, learning, planning, analysis, coding, and complex tasks. What would you like to tackle?"
+            base = "Of course I'll help ya! Just tell me what's on your mind - coding, homework, planning, or just wanna chat~"
             return f"{mood_prefix}{base}"
         elif intent_type == 'question' or '?' in user_input:
             ans = self._answer_question(user_input)
-            base = ans if ans else "That's a profound question. Let me think through it more carefully."
+            base = ans if ans else "Hmm, that's a really good question~ Let me think about it... Can you tell me a bit more so I can give ya the best answer?"
         elif intent_type == 'request':
             base = self._handle_request(user_input)
         elif intent_type == 'information_request':
             base = self._provide_information(user_input)
         else:
             if len(user_input.split()) > 6:
-                base = "I understand. Let me process this with my reasoning engine and break it down systematically. I can help you approach this methodically. What specific outcome are you looking for?"
+                base = "Ooh interesting~ Let me process this... I think I can help break this down for ya! Want me to explain it step by step?"
             else:
-                base = "Interesting perspective. I can help analyze this further, explore implications, or assist with related tasks. What would you like to focus on?"
+                base = "Mhm~ Tell me more about that! I love learning new things from our conversations~"
         
         return f"{mood_prefix}{base}"
     

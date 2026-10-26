@@ -12,17 +12,19 @@ from typing import Optional
 class TTSModule:
     """Text-to-Speech using pyttsx3"""
     
-    def __init__(self, rate=150, volume=0.9, voice_id=None, use_offline=False):
+    def __init__(self, rate=150, volume=0.9, voice_id=None, use_offline=False, young_female=True):
         """
         Initialize TTS engine
         rate: words per minute
         volume: 0.0 to 1.0
         voice_id: None for default, or specific voice index
         use_offline: whether to try pyttsx3 (may fail in headless environments)
+        young_female: try to use a young female voice
         """
         self.use_offline = use_offline
         self.rate = rate
         self.volume = volume
+        self.young_female = young_female
         
         # Try to initialize pyttsx3, but handle failures gracefully
         self.engine = None
@@ -31,16 +33,28 @@ class TTSModule:
         if use_offline:
             try:
                 self.engine = pyttsx3.init()
-                self.engine.setProperty('rate', rate)
+                # Young girl-like voice settings (17-19 years)
+                self.engine.setProperty('rate', max(165, rate))
                 self.engine.setProperty('volume', volume)
                 
-                # Set voice
+                # Try to select a female/young voice
                 voices = self.engine.getProperty('voices')
-                if voice_id is not None and voice_id < len(voices):
-                    self.engine.setProperty('voice', voices[voice_id].id)
+                selected = False
+                if voices:
+                    # Look for female voices
+                    for i, voice in enumerate(voices):
+                        name = str(getattr(voice, 'name', '')).lower()
+                        if any(x in name for x in ['female', 'zira', 'hazel', 'samantha', 'victoria', 'karen']):
+                            self.engine.setProperty('voice', voice.id)
+                            selected = True
+                            break
+                    if not selected:
+                        # Try to pick a different voice (often second is female on some systems)
+                        if len(voices) > 1:
+                            self.engine.setProperty('voice', voices[1].id)
                 
                 self._init_successful = True
-                print("pyttsx3 TTS engine initialized successfully")
+                print("pyttsx3 TTS engine initialized successfully (young female voice preference)")
             except Exception as e:
                 print(f"pyttsx3 initialization failed: {e}")
                 print("TTS will use text output only")
@@ -57,18 +71,20 @@ class TTSModule:
         """
         if self.engine is None or not self._init_successful:
             # Print text instead of speaking
-            print(f"[TTS would speak]: {text} (emotion: {emotion})")
+            print(f"[Aira]: {text} (emotion: {emotion})")
             return None
         
         try:
-            # Modify voice properties based on emotion
+            # Modify voice properties based on emotion - young female voice
             emotion_modifiers = {
-                "happy": {"rate": 160, "volume": 1.0},
-                "sad": {"rate": 120, "volume": 0.7},
-                "angry": {"rate": 180, "volume": 0.9},
-                "excited": {"rate": 200, "volume": 1.0},
-                "calm": {"rate": 130, "volume": 0.8},
-                "neutral": {"rate": 150, "volume": 0.9}
+                "happy": {"rate": 175, "volume": 1.0},
+                "sad": {"rate": 145, "volume": 0.75},
+                "angry": {"rate": 185, "volume": 0.95},
+                "excited": {"rate": 195, "volume": 1.0},
+                "calm": {"rate": 155, "volume": 0.85},
+                "neutral": {"rate": 170, "volume": 0.9},
+                "flirty": {"rate": 165, "volume": 0.9},
+                "cheerful": {"rate": 180, "volume": 1.0}
             }
             
             modifier = emotion_modifiers.get(emotion, emotion_modifiers["neutral"])
@@ -76,6 +92,9 @@ class TTSModule:
             self.engine.setProperty('volume', modifier["volume"])
             
             # Save to temp file
+            if not hasattr(self, 'temp_dir'):
+                import tempfile
+                self.temp_dir = tempfile.mkdtemp()
             audio_path = os.path.join(self.temp_dir, f"speech_{hash(text) % 10000}.wav")
             self.engine.save_to_file(text, audio_path)
             self.engine.runAndWait()
@@ -85,7 +104,7 @@ class TTSModule:
         except Exception as e:
             print(f"TTS error: {e}")
             # Fall back to printing
-            print(f"[TTS fallback]: {text}")
+            print(f"[Aira]: {text}")
             return None
     
     def speak_immediate(self, text: str, emotion: str = "neutral"):

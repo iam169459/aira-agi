@@ -39,7 +39,7 @@ class EmotionAwareAI:
         self.stt = STTModule(model_size=model_name)
         
         # TTS
-        self.tts = TTSModule(rate=150, volume=0.9)
+        self.tts = TTSModule(rate=170, volume=0.9, use_offline=False, young_female=True)
         
         # Emotion perception
         if emotion_model is None:
