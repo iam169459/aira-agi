@@ -1,0 +1,563 @@
+# Combined Training Dataset for Aira AGI
+# This file combines coding data, daily conversations, and voice interaction patterns
+# for training a comprehensive AI assistant
+
+# ============================================================================
+# SECTION 1: CODING AND TECHNICAL DATA
+# ============================================================================
+
+# Python Programming
+# Basic Python syntax
+print("Hello, World!")
+def add(a, b):
+    return a + b
+
+class Person:
+    def __init__(self, name, age):
+        self.name = name
+        self.age = age
+    
+    def greet(self):
+        return f"Hello, I'm {self.name}"
+
+# Python data structures
+my_list = [1, 2, 3, 4, 5]
+my_dict = {"name": "Alice", "age": 30}
+my_set = {1, 2, 3}
+my_tuple = (1, 2, 3)
+
+# Python control flow
+for i in range(10):
+    print(i)
+
+while True:
+    user_input = input("Enter something: ")
+    if user_input == "quit":
+        break
+
+# Python functions
+def factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+def fibonacci(n):
+    a, b = 0, 1
+    for _ in range(n):
+        print(a)
+        a, b = b, a + b
+
+# Python OOP
+class Animal:
+    def __init__(self, name):
+        self.name = name
+    
+    def speak(self):
+        raise NotImplementedError
+
+class Dog(Animal):
+    def speak(self):
+        return "Woof!"
+
+class Cat(Animal):
+    def speak(self):
+        return "Meow!"
+
+# Python modules and packages
+import math
+import os
+import sys
+from datetime import datetime
+
+# Python file I/O
+with open("file.txt", "r") as f:
+    content = f.read()
+
+with open("output.txt", "w") as f:
+    f.write("Hello")
+
+# Python error handling
+try:
+    result = 10 / 0
+except ZeroDivisionError:
+    print("Cannot divide by zero")
+finally:
+    print("Cleanup")
+
+# Python decorators
+def my_decorator(func):
+    def wrapper(*args, **kwargs):
+        print("Before function")
+        result = func(*args, **kwargs)
+        print("After function")
+        return result
+    return wrapper
+
+@my_decorator
+def say_hello():
+    print("Hello")
+
+# Python generators
+def count_up_to(n):
+    i = 1
+    while i <= n:
+        yield i
+        i += 1
+
+# Python list comprehensions
+squares = [x**2 for x in range(10)]
+evens = [x for x in range(20) if x % 2 == 0]
+
+# Python lambda functions
+square = lambda x: x * x
+add = lambda a, b: a + b
+
+# JavaScript Programming
+// JavaScript basics
+console.log("Hello, World!");
+let x = 10;
+const PI = 3.14;
+
+// JavaScript functions
+function add(a, b) {
+    return a + b;
+}
+
+const multiply = (a, b) => a * b;
+
+// JavaScript objects
+const person = {
+    name: "Alice",
+    age: 30,
+    greet: function() {
+        console.log("Hello, I'm " + this.name);
+    }
+};
+
+// JavaScript arrays
+const arr = [1, 2, 3, 4, 5];
+arr.forEach(item => console.log(item));
+const doubled = arr.map(item => item * 2);
+
+// JavaScript classes
+class Animal {
+    constructor(name) {
+        this.name = name;
+    }
+    
+    speak() {
+        console.log("Animal sound");
+    }
+}
+
+class Dog extends Animal {
+    speak() {
+        console.log("Woof!");
+    }
+}
+
+// JavaScript async/await
+async function fetchData() {
+    const response = await fetch('https://api.example.com/data');
+    const data = await response.json();
+    return data;
+}
+
+// JavaScript DOM manipulation
+document.getElementById("myButton").addEventListener("click", function() {
+    console.log("Button clicked");
+});
+
+# Machine Learning and AI
+# Neural networks
+import torch
+import torch.nn as nn
+
+class NeuralNetwork(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(784, 128)
+        self.fc2 = nn.Linear(128, 10)
+    
+    def forward(self, x):
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+# Training loop
+model = NeuralNetwork()
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+for epoch in range(10):
+    for inputs, labels in train_loader:
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+# Transformer architecture
+class Attention(nn.Module):
+    def __init__(self, embed_size, heads):
+        super().__init__()
+        self.attention = nn.MultiheadAttention(embed_size, heads)
+    
+    def forward(self, x):
+        attn_output, _ = self.attention(x, x, x)
+        return attn_output
+
+# Data Science
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression
+
+# Load data
+df = pd.read_csv("data.csv")
+X = df[["feature1", "feature2"]]
+y = df["target"]
+
+# Train model
+model = LinearRegression()
+model.fit(X, y)
+predictions = model.predict(X)
+
+# Data visualization
+import matplotlib.pyplot as plt
+plt.plot([1, 2, 3, 4], [1, 4, 9, 16])
+plt.xlabel("X")
+plt.ylabel("Y")
+plt.title("Simple Plot")
+plt.show()
+
+# Web Development
+# HTML
+<html>
+<head>
+    <title>My Website</title>
+</head>
+<body>
+    <h1>Welcome to My Website</h1>
+    <p>This is a paragraph.</p>
+    <button id="myButton">Click Me</button>
+</body>
+</html>
+
+# CSS
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    margin: 0;
+    padding: 20px;
+}
+
+button {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+# JavaScript for web
+function handleClick() {
+    console.log("Button clicked");
+    document.getElementById("demo").innerHTML = "Button was clicked!";
+}
+
+# Database queries
+-- SQL
+SELECT * FROM users WHERE age > 18;
+INSERT INTO users (name, email) VALUES ('John', 'john@example.com');
+UPDATE users SET name = 'Jane' WHERE id = 1;
+DELETE FROM users WHERE id = 1;
+
+-- MongoDB
+const user = await db.collection('users').findOne({ _id: userId });
+const result = await db.collection('users').insertOne({ name: 'John' });
+
+# System Administration
+# Bash commands
+ls -la
+cd /path/to/directory
+mkdir new_directory
+rm file.txt
+cp source.txt destination.txt
+mv old.txt new.txt
+chmod 755 script.sh
+./script.sh
+
+# Git commands
+git clone https://github.com/user/repo.git
+git add .
+git commit -m "Initial commit"
+git push origin main
+git pull origin main
+git branch new_feature
+git checkout new_feature
+
+# Docker
+docker build -t myapp .
+docker run -p 8080:80 myapp
+docker ps
+docker stop container_id
+
+# Kubernetes
+kubectl apply -f deployment.yaml
+kubectl get pods
+kubectl logs pod_name
+kubectl delete deployment deployment_name
+
+# ============================================================================
+# SECTION 2: DAILY CONVERSATIONS
+# ============================================================================
+
+# Greetings
+Hello! How are you today?
+I'm doing well, thank you. How about you?
+Good morning! What can I help you with?
+Hi there! I'm your AI assistant.
+Hey! What's up?
+
+# Daily Activities
+What time is it?
+What's the weather like today?
+What should I wear today?
+What's for dinner tonight?
+
+# Personal Assistance
+Can you remind me to call my mom at 3pm?
+What's on my calendar for tomorrow?
+Can you help me organize my day?
+
+# General Knowledge
+What is the capital of France?
+The capital of France is Paris.
+Who wrote Romeo and Juliet?
+William Shakespeare wrote Romeo and Juliet.
+
+# Technology Help
+How do I write a for loop in Python?
+What is the difference between == and === in JavaScript?
+How do I install Python packages?
+
+# Problem Solving
+My computer is running slow. What should I do?
+I can't connect to the internet. What should I check?
+My printer isn't working. What should I do?
+
+# Emotional Support
+I'm feeling stressed today.
+I'm sorry to hear that. Would you like to talk about it?
+I had a great day!
+That's wonderful! I'm glad to hear it.
+
+# Learning
+How do I learn Python?
+What are some good books to read?
+Can you explain quantum physics?
+
+# Planning
+Help me plan a trip to Paris.
+What should I pack for a weekend trip?
+How do I create a study schedule?
+
+# Health
+What are some healthy breakfast options?
+How can I stay hydrated?
+What are some relaxation techniques?
+
+# Shopping
+What should I buy for a friend's birthday?
+Where can I find good deals online?
+What's a good gift for someone who loves cooking?
+
+# ============================================================================
+# SECTION 3: VOICE INTERACTION PATTERNS
+# ============================================================================
+
+# Voice commands
+Hey Aira, what's the weather today?
+Aira, tell me a joke.
+Hey Aira, set a reminder for 3pm.
+Aira, what's on my calendar?
+
+# Voice responses
+Sure, I can help with that.
+I'm on it.
+Let me check for you.
+I found some information for you.
+
+# Voice clarifications
+Did you mean to say...?
+I didn't quite catch that. Could you repeat?
+Could you please rephrase that?
+
+# Voice confirmations
+Yes, I can do that.
+No, I don't have access to that information.
+I'm not sure I understand. Could you clarify?
+
+# Voice emotions
+That sounds exciting!
+I'm sorry to hear that.
+That's wonderful news!
+I understand you're feeling frustrated.
+
+# Voice instructions
+Please speak clearly.
+Try speaking a bit louder.
+You can speak naturally.
+
+# ============================================================================
+# SECTION 4: CODING TUTORIALS AND EXPLANATIONS
+# ============================================================================
+
+# Python tutorial
+To define a function in Python, use the def keyword followed by the function name and parameters in parentheses.
+
+For example:
+
+def greet(name):
+    return f"Hello, {name}!"
+
+This function takes a parameter called name and returns a greeting string.
+
+# JavaScript tutorial
+In JavaScript, you can define a function using the function keyword or as an arrow function.
+
+Traditional function:
+function add(a, b) {
+    return a + b;
+}
+
+Arrow function:
+const add = (a, b) => a + b;
+
+# Algorithm explanations
+The quicksort algorithm works by selecting a pivot element and partitioning the array into two subarrays.
+
+Here's a Python implementation:
+
+def quicksort(arr):
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[len(arr) // 2]
+    left = [x for x in arr if x < pivot]
+    middle = [x for x in arr if x == pivot]
+    right = [x for x in arr if x > pivot]
+    return quicksort(left) + middle + quicksort(right)
+
+# Data structure explanations
+A binary search tree is a tree data structure where each node has at most two children.
+
+Properties:
+- The left subtree contains only nodes with keys less than the node's key
+- The right subtree contains only nodes with keys greater than the node's key
+- Both left and right subtrees must also be binary search trees
+
+# ============================================================================
+# SECTION 5: MULTI-TURN CONVERSATIONS
+# ============================================================================
+
+# Conversation 1: Learning Python
+User: I want to learn Python. Where should I start?
+AI: Great choice! Python is a versatile language. Start with the basics like variables, data types, and control flow.
+User: What are variables in Python?
+AI: Variables are containers for storing data values. You don't need to declare them with a type. Just use the equals sign to assign a value.
+User: Can you give me an example?
+AI: Of course! For example: x = 5 or name = "Alice". The variable x stores the integer 5, and name stores the string "Alice".
+
+# Conversation 2: Planning a trip
+User: I'm planning a trip to Japan. What should I see?
+AI: Japan has many amazing places to visit! Tokyo, Kyoto, and Osaka are must-sees. What are your interests?
+User: I love history and culture.
+AI: Then you should definitely visit Kyoto. It has many temples, shrines, and traditional tea houses.
+User: How many days should I spend there?
+AI: I'd recommend at least 3-4 days in Kyoto to see the main attractions without rushing.
+
+# Conversation 3: Debugging code
+User: My Python code isn't working. Can you help?
+AI: Of course! What's the error message you're getting?
+User: It says TypeError: unsupported operand type(s) for +: 'int' and 'str'
+AI: This error occurs when you try to add an integer and a string. You need to convert them to the same type first.
+User: How do I fix it?
+AI: You can convert the integer to a string using str(), or convert the string to an integer using int(). Which one makes sense for your code?
+
+# ============================================================================
+# SECTION 6: TECHNICAL DOCUMENTATION
+# ============================================================================
+
+# Python documentation
+The Python Standard Library provides many useful modules for common tasks.
+
+For file I/O, use the built-in open() function:
+- open(filename, mode) opens a file
+- modes: 'r' for read, 'w' for write, 'a' for append
+- always use with statement for automatic file closing
+
+# API documentation
+REST APIs typically use HTTP methods:
+- GET: Retrieve data
+- POST: Create data
+- PUT: Update data
+- DELETE: Remove data
+
+Response status codes:
+- 200: OK
+- 201: Created
+- 400: Bad Request
+- 401: Unauthorized
+- 404: Not Found
+- 500: Internal Server Error
+
+# Git documentation
+Git is a distributed version control system.
+
+Basic workflow:
+1. Clone a repository: git clone <url>
+2. Create a branch: git checkout -b feature-name
+3. Make changes and commit: git add . && git commit -m "message"
+4. Push to remote: git push origin feature-name
+5. Create a pull request
+
+# ============================================================================
+# SECTION 7: VOICE-SPECIFIC PATTERNS
+# ============================================================================
+
+# Voice command patterns
+Okay Aira, [command]
+Hey Aira, [command]
+Aira, [command]
+
+# Voice query patterns
+What is [thing]?
+How do I [action]?
+Can you [action]?
+Tell me about [topic]?
+
+# Voice response patterns
+I can help you with that.
+I'm sorry, I don't have access to that information.
+Let me look that up for you.
+I found [number] results for you.
+
+# Voice confirmation patterns
+Yes, I can do that.
+No, I cannot do that.
+I'm not sure I understand.
+Could you please repeat that?
+
+# Voice emotion patterns
+That sounds [emotion]!
+I'm [emotion] to hear that.
+I understand you're feeling [emotion].
+Would you like to talk about it?
+
+# ============================================================================
+# END OF TRAINING DATASET
+# ============================================================================
