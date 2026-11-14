@@ -501,21 +501,10 @@ class GirlVoiceAI:
         
         try:
             if self.use_girl_voice and self.girl_tts:
-                # Use girl voice TTS
-                audio_path = self.girl_tts.speak(text, emotion=emotion)
-                
-                if audio_path:
-                    try:
-                        import librosa
-                        audio, sr = librosa.load(audio_path, sr=None)
-                        sd.play(audio, sr)
-                        sd.wait()
-                        os.unlink(audio_path)
-                    except Exception as e:
-                        print(f"Audio playback error: {e}")
-                        print(f"\n[35m[1mAira:[0m {text}")
-                else:
-                    print(f"\n[35m[1mAira:[0m {text}")
+                # Stream human-like speech: first phrase plays immediately,
+                # with breathing and natural pauses handled by the TTS module
+                self.girl_tts.speak(text, emotion=emotion, play=True)
+                print(f"\n[35m[1mAira:[0m {text}")
             elif self.tts:
                 # Use regular TTS
                 audio_path = self.tts.speak(text, emotion=emotion)

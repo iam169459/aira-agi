@@ -67,6 +67,18 @@ python voice_ai_girl.py --mode command
 - **Shy:** Slower, lower pitch, very quiet
 - **Playful:** Fast, high pitch, normal volume
 
+### Human-Like Speech Rhythm
+
+Aira no longer reads text like a robot. Her replies are spoken the way a person talks:
+
+- **Breath groups** - Replies are split into short phrases (about 10 words) with natural pauses between them, like someone taking a breath mid-sentence
+- **Audible breathing** - A soft synthesized inhale plays before she starts and occasionally between phrases (more when calm or sad, less when excited)
+- **Emotion-paced pauses** - Excited = quicker rhythm, sad/calm = slower, heavier pauses
+- **Fillers and hesitations** - Natural spoken touches like "Hmm,", "Well,", "um", "you know", plus contractions ("I'm", "wanna", "gonna") and a little "Hehe!" when she's happy
+- **Streaming playback** - The first phrase is spoken the moment it is ready instead of waiting for the whole reply to render, so she responds noticeably faster
+
+Tune it in `modules/tts_girl.py`: `human_like`, `breathing`, `filler_chance`, `hesitation_chance`, `breath_chance`.
+
 ---
 
 ## 💬 **Girl-Like Speech Patterns**
