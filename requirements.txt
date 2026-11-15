@@ -15,3 +15,4 @@ psutil
 #pyobjc  # macOS
 pyautogui
 python-dotenv
+#piper-tts  # optional: neural voice for Aira (much more realistic), then run setup_neural_voice.py

@@ -34,6 +34,13 @@ except Exception:
     sd = None
     SD_AVAILABLE = False
 
+try:
+    from piper import PiperVoice
+    PIPER_AVAILABLE = True
+except Exception:
+    PiperVoice = None
+    PIPER_AVAILABLE = False
+
 
 class GirlVoiceTTS:
     """
@@ -77,6 +84,13 @@ class GirlVoiceTTS:
         self.breath_chance = 0.28
         self._rng = random.Random()
         self._nprng = np.random.default_rng()
+        self._emotion_settings = {"rate": rate, "volume": volume, "pitch": pitch}
+        self.piper_voice = None
+        self.piper_model = None
+        
+        # Optional neural voice: much more realistic when a Piper model exists
+        if PIPER_AVAILABLE:
+            self._try_load_piper()
         
         # Platform-specific settings
         self.platform = platform.system().lower()
@@ -260,6 +274,7 @@ class GirlVoiceTTS:
         }
         
         settings = emotion_settings.get(emotion, emotion_settings["neutral"])
+        self._emotion_settings = dict(settings)
         
         try:
             self.engine.setProperty('rate', settings["rate"])
@@ -308,6 +323,34 @@ class GirlVoiceTTS:
         "calm": 1.5, "sad": 1.6,
     }
     
+    def _try_load_piper(self):
+        """Load a Piper neural voice model if one is available."""
+        try:
+            candidates = []
+            env_model = os.environ.get("AIRA_PIPER_MODEL")
+            if env_model:
+                candidates.append(env_model)
+            models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "piper")
+            if os.path.isdir(models_dir):
+                candidates.extend(
+                    os.path.join(models_dir, f) for f in sorted(os.listdir(models_dir)) if f.endswith(".onnx")
+                )
+            
+            for model_path in candidates:
+                if not os.path.exists(model_path):
+                    continue
+                config_path = model_path + ".json"
+                try:
+                    self.piper_voice = PiperVoice.load(model_path, config_path=config_path)
+                except TypeError:
+                    self.piper_voice = PiperVoice.load(model_path)
+                self.piper_model = model_path
+                print(f"🧠 Neural voice loaded: {os.path.basename(model_path)}")
+                return
+        except Exception as e:
+            print(f"⚠️ Neural voice unavailable ({e}), using pyttsx3")
+        self.piper_voice = None
+    
     def _humanize_text(self, text: str, emotion: str = None) -> str:
         """Add contractions, fillers and hesitations so the reply sounds spoken, not read."""
         result = text.strip()
@@ -344,10 +387,31 @@ class GirlVoiceTTS:
                 and self._rng.random() < self.laugh_chance):
             result = f"{result} Hehe!"
         
+        if emotion in ("excited", "playful", "happy") and self._rng.random() < 0.18:
+            result = self._elongate_word(result)
+        
         if result[-1] not in ".!?…,":
             result += "."
         
         return result
+    
+    _ELONGATIONS = {"so": "sooo", "really": "reaally", "very": "veery", "oh": "ohh", "wow": "woow"}
+    
+    def _elongate_word(self, text: str) -> str:
+        """Stretch one word ("so" -> "sooo") the way people do when excited."""
+        words = text.split()
+        spots = [i for i, w in enumerate(words) if w.lower().strip(".,!?") in self._ELONGATIONS]
+        if not spots:
+            return text
+        i = self._rng.choice(spots)
+        word = words[i]
+        stem = word.rstrip(".,!?")
+        stretched = self._ELONGATIONS[stem.lower()]
+        if stem[0].isupper():
+            stretched = stretched.capitalize()
+        suffix = word[len(stem):] if stem != word else ""
+        words[i] = stretched + suffix
+        return " ".join(words)
     
     def _split_breath_groups(self, text: str, max_words: int = 10) -> List[str]:
         """Split text into short breath-sized groups a person would say in one breath."""
@@ -418,19 +482,63 @@ class GirlVoiceTTS:
         except Exception:
             return None, None
     
+    _SOFT_STARTS = ("hmm", "well", "mmm", "okay so", "you know", "let's see", "um", "uhm", "i mean")
+    
+    def _apply_prosody(self, text: str):
+        """Vary rate/pitch/volume around the emotion baseline so phrases don't sound identical.
+        Filler phrases ("Hmm,", "well...") are spoken softer and slower, like real mumbles."""
+        try:
+            base = self._emotion_settings
+            soft = text.strip().lower().startswith(self._SOFT_STARTS)
+            rate_mult = 0.90 if soft else 0.96 + 0.08 * self._rng.random()
+            vol_mult = 0.78 if soft else 0.95 + 0.07 * self._rng.random()
+            pitch_mult = 0.96 + 0.08 * self._rng.random()
+            
+            self.engine.setProperty('rate', int(base["rate"] * rate_mult))
+            self.engine.setProperty('volume', min(base["volume"] * vol_mult, 1.0))
+            try:
+                self.engine.setProperty('pitch', int(base["pitch"] * pitch_mult))
+            except Exception:
+                pass
+        except Exception:
+            pass
+    
+    def _apply_fades(self, audio: np.ndarray, sr: int) -> np.ndarray:
+        """Fade in/out to remove clicks between phrases and soften edges."""
+        fade_in = max(1, int(sr * 0.012))
+        fade_out = max(1, int(sr * 0.045))
+        if len(audio) <= fade_in + fade_out:
+            return audio
+        audio = audio.copy()
+        audio[:fade_in] *= np.linspace(0.0, 1.0, fade_in)
+        audio[-fade_out:] *= np.linspace(1.0, 0.0, fade_out)
+        return audio
+    
     def _render_group(self, text: str) -> Tuple[Optional[np.ndarray], Optional[int]]:
         """Render one breath group to PCM samples via the TTS engine."""
         try:
             if self.temp_dir is None:
                 self.temp_dir = tempfile.mkdtemp()
             path = os.path.join(self.temp_dir, f"aira_{int(time.time() * 1000000)}.wav")
-            self.engine.save_to_file(text, path)
-            self.engine.runAndWait()
+            
+            if self.piper_voice is not None:
+                with wave.open(path, "wb") as w:
+                    if hasattr(self.piper_voice, "synthesize_wav"):
+                        self.piper_voice.synthesize_wav(text, w)
+                    else:
+                        self.piper_voice.synthesize(text, w)
+            else:
+                self._apply_prosody(text)
+                self.engine.save_to_file(text, path)
+                self.engine.runAndWait()
+            
             audio, sr = self._load_wav(path)
             try:
                 os.unlink(path)
             except OSError:
                 pass
+            if audio is not None:
+                audio = self._apply_fades(audio, sr or 22050)
             return audio, sr
         except Exception as e:
             print(f"⚠️ Could not render speech group: {e}")

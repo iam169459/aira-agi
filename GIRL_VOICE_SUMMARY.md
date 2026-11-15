@@ -79,6 +79,23 @@ Aira no longer reads text like a robot. Her replies are spoken the way a person 
 
 Tune it in `modules/tts_girl.py`: `human_like`, `breathing`, `filler_chance`, `hesitation_chance`, `breath_chance`.
 
+### Neural Voice (Optional, Most Realistic)
+
+For a fully natural-sounding voice, Aira can use a neural Piper voice instead of the OS voice:
+
+```bash
+pip install piper-tts
+python setup_neural_voice.py
+```
+
+The model is downloaded once into `models/piper/` and detected automatically on startup (you'll see `🧠 Neural voice loaded`). All the human-like rhythm features above work the same; set `AIRA_PIPER_MODEL` to use a custom `.onnx` voice. Without Piper installed, Aira falls back to pyttsx3.
+
+Additional realism on the built-in voice:
+- **Prosody micro-variation** - rate, pitch and volume drift slightly around the emotion baseline on every phrase, so no two phrases sound identical
+- **Soft fillers** - "Hmm," and "well..." are mumbled quieter and slower, like real thinking
+- **Word stretching** - when excited she may say "sooo" or "reaally"
+- **Click-free phrasing** - every phrase gets a tiny fade-in/fade-out
+
 ---
 
 ## 💬 **Girl-Like Speech Patterns**
