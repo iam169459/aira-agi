@@ -24,8 +24,11 @@ __version__ = "3.0.0"
 import sys
 import os
 
-# Ensure we're in the right directory
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Ensure we're in the project root and it's importable
+os.chdir(PROJECT_ROOT)
+sys.path.insert(0, PROJECT_ROOT)
 
 def check_requirements():
     """Check if required packages are installed"""

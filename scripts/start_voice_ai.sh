@@ -3,6 +3,9 @@
 # Start Voice AI Assistant
 # This script provides easy access to the voice AI functionality
 
+# Run from the project root so all relative paths work
+cd "$(dirname "$0")/.." || exit 1
+
 echo "========================================================================"
 echo "  Aira Voice AI Assistant"
 echo "========================================================================"

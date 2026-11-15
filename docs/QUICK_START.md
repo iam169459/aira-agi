@@ -18,8 +18,8 @@ python voice_ai.py --mode text
 python voice_ai.py --mode command
 
 # Interactive menu
-chmod +x start_voice_ai.sh
-./start_voice_ai.sh
+chmod +x scripts/start_voice_ai.sh
+./scripts/start_voice_ai.sh
 ```
 
 ---
@@ -100,13 +100,21 @@ python voice_ai.py --mode voice
 ```
 tiny-from-scratch/
 ├── voice_ai.py                  # Voice-to-voice AI
-├── start_voice_ai.sh            # Interactive menu
+├── voice_ai_girl.py             # Voice AI with persona
+├── scripts/
+│   ├── start_voice_ai.sh        # Interactive menu
+│   └── run_assistant.py         # Main entry point
 ├── train_configs.py             # Training configurations
-├── daily_conversations.txt      # Conversation dataset
-├── combined_training_data.txt   # Combined dataset
-├── VOICE_AI_GUIDE.md            # Complete guide
-└── TRAINING_SUMMARY.md          # This summary
+├── modules/
+│   └── aira_persona.py          # Girl persona module
+├── examples/
+│   └── demo_girl_persona.py     # Persona demo
+└── data/
+    ├── daily_conversations.txt      # Conversation dataset
+    └── combined_training_data.txt   # Combined dataset
 ```
+
+> **Guides:** see [VOICE_AI_GUIDE.md](VOICE_AI_GUIDE.md) and [TRAINING_SUMMARY.md](TRAINING_SUMMARY.md)
 
 ---
 

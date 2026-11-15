@@ -15,11 +15,11 @@ import time
 from typing import Optional
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import Girl Persona
 try:
-    from aira_persona import GirlPersona, Emotion, PersonaConfig
+    from modules.aira_persona import GirlPersona, Emotion, PersonaConfig
     PERSONA_AVAILABLE = True
 except ImportError as e:
     print(f"Error: Girl Persona not available: {e}")
