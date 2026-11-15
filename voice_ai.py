@@ -413,7 +413,12 @@ class VoiceAI:
             if emotion is None:
                 emotion = 'neutral'
             
-            audio_path = self.tts.speak(text, emotion=emotion)
+            # Use rhythm and breathing for more natural speech
+            if hasattr(self.tts, 'speak_with_rhythm'):
+                audio_path = self.tts.speak_with_rhythm(text, emotion=emotion, 
+                                                        use_rhythm=True, use_breathing=True)
+            else:
+                audio_path = self.tts.speak(text, emotion=emotion)
             
             if audio_path:
                 # Play the audio
