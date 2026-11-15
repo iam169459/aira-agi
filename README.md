@@ -97,13 +97,11 @@ Aira implements all of these capabilities in an integrated, lightweight, and ful
 ```
 aira-agi/
 ├── README.md                    # Project documentation
-├── AGI_IMPLEMENTATION.md        # Detailed technical implementation
+├── docs/                        # Documentation (guides, implementation)
 ├── LICENSE                      # MIT License
 ├── requirements.txt             # Python dependencies
-├── data.txt                     # Training corpus
-├── train.py                     # Transformer training script
-├── generate.py                  # Text generation script
-├── test_agi_core.py             # Comprehensive test suite
+├── data/                        # Training corpora (code, conversations)
+├── scripts/                     # Training, generation, and test scripts
 ├── __init__.py                  # Main entry point
 ├── agi_state.json               # Persistent AGI state (auto-generated)
 │
@@ -425,7 +423,7 @@ Aira includes a minimal character-level transformer for training on custom data.
 
 #### Prepare Training Data
 
-Edit `data.txt` with your training corpus (plain text):
+Edit `data/data.txt` with your training corpus (plain text):
 
 ```text
 Your training data here...
@@ -488,7 +486,7 @@ For coding-specific models, see the comprehensive guide in the repository or fol
 5. **Train**: Run modified `train.py` for 5000+ steps
 6. **Download Checkpoint**: Save `aira_coder.pt` from `/kaggle/working/`
 
-See `AGI_IMPLEMENTATION.md` for detailed Kaggle training instructions.
+See `docs/AGI_IMPLEMENTATION.md` for detailed Kaggle training instructions.
 
 ---
 
@@ -530,7 +528,7 @@ agent = AGIAgent(
 ### Run All Tests
 
 ```bash
-python test_agi_core.py
+python scripts/test_agi_core.py
 ```
 
 ### Test Output
@@ -749,7 +747,7 @@ We welcome contributions from the community! Here's how you can help:
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes following existing code style
-4. Test thoroughly (`python test_agi_core.py`)
+4. Test thoroughly (`python scripts/test_agi_core.py`)
 5. Commit with clear messages (`git commit -m 'Add amazing feature'`)
 6. Push to branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request

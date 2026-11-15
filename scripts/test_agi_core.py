@@ -18,7 +18,7 @@ import time
 from typing import List, Dict, Any
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def print_section(title: str):

@@ -38,32 +38,32 @@ case $choice in
         ;;
     4)
         echo "Available training configurations:"
-        python train_configs.py --list
+        python scripts/train_configs.py --list
         ;;
     5)
         echo "Training coding model..."
         echo "This will train a model optimized for coding assistance."
         read -p "Press Enter to start or Ctrl+C to cancel..." 
-        python train_configs.py --generate coding > train_coding.py
+        python scripts/train_configs.py --generate coding > train_coding.py
         python train_coding.py
         ;;
     6)
         echo "Training daily conversation model..."
         echo "This will train a model optimized for daily conversations."
         read -p "Press Enter to start or Ctrl+C to cancel..." 
-        python train_configs.py --generate daily > train_daily.py
+        python scripts/train_configs.py --generate daily > train_daily.py
         python train_daily.py
         ;;
     7)
         echo "Training voice model..."
         echo "This will train a model optimized for voice interactions."
         read -p "Press Enter to start or Ctrl+C to cancel..." 
-        python train_configs.py --generate voice > train_voice.py
+        python scripts/train_configs.py --generate voice > train_voice.py
         python train_voice.py
         ;;
     8)
         echo "Generating text from existing model..."
-        python generate.py --checkpoint tiny_model.pt --prompt "Hello, how are you?"
+        python scripts/generate.py --checkpoint tiny_model.pt --prompt "Hello, how are you?"
         ;;
     9)
         echo "Goodbye!"

@@ -11,6 +11,7 @@ tiny_model.pt
 data-private.txt
 datasets/
 checkpoints/
+models/
 
 # macOS
 .DS_Store

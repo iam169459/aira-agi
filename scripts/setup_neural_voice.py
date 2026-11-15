@@ -19,7 +19,7 @@ BASE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0"
 VOICE_PATH = "en/en_US/amy/medium"
 FILES = ["en_US-amy-medium.onnx", "en_US-amy-medium.onnx.json"]
 
-DEST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "piper")
+DEST_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "piper")
 
 
 def download(url: str, dest: str):

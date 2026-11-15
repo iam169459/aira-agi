@@ -15,10 +15,10 @@ This document summarizes all the new files and capabilities added to train Aira 
 
 | File | Size | Purpose | Lines |
 |------|------|---------|-------|
-| `daily_conversations.txt` | 17KB | Daily conversation patterns | ~500 |
-| `combined_training_data.txt` | 14KB | Combined code + conversation data | ~400 |
+| `data/daily_conversations.txt` | 17KB | Daily conversation patterns | ~500 |
+| `data/combined_training_data.txt` | 14KB | Combined code + conversation data | ~400 |
 
-**Note:** The existing `code_corpus.txt` (383KB) is already available for coding training.
+**Note:** The existing `data/code_corpus.txt` (383KB) is already available for coding training.
 
 ### 2. Voice AI System
 
@@ -142,8 +142,8 @@ python voice_ai.py --mode voice
 - Save every: 200
 
 **Data Files:**
-- Primary: `code_corpus.txt`
-- Secondary: `combined_training_data.txt`
+- Primary: `data/code_corpus.txt`
+- Secondary: `data/combined_training_data.txt`
 
 **Checkpoint:** `coding_model.pt`
 
@@ -173,8 +173,8 @@ python voice_ai.py --mode voice
 - Save every: 150
 
 **Data Files:**
-- Primary: `daily_conversations.txt`
-- Secondary: `combined_training_data.txt`
+- Primary: `data/daily_conversations.txt`
+- Secondary: `data/combined_training_data.txt`
 
 **Checkpoint:** `daily_model.pt`
 
@@ -204,7 +204,7 @@ python voice_ai.py --mode voice
 - Save every: 100
 
 **Data Files:**
-- Primary: `combined_training_data.txt`
+- Primary: `data/combined_training_data.txt`
 
 **Checkpoint:** `voice_model.pt`
 
@@ -367,7 +367,7 @@ from train_configs import TrainingConfig
 
 config = TrainingConfig(
     name="Custom",
-    data_files=["code_corpus.txt", "daily_conversations.txt", "combined_training_data.txt"],
+    data_files=["data/code_corpus.txt", "data/daily_conversations.txt", "data/combined_training_data.txt"],
     block_size=128,
     n_embd=256,
     n_head=4,
@@ -484,17 +484,14 @@ tiny-from-scratch/
 ├── voice_ai.py                  # Voice-to-voice AI script
 ├── start_voice_ai.sh            # Interactive menu
 ├── train_configs.py             # Training configurations
-├── daily_conversations.txt      # Daily conversation dataset
-├── combined_training_data.txt   # Combined training dataset
+├── data/                        # Training datasets
 ├── VOICE_AI_GUIDE.md            # Complete guide
 └── TRAINING_SUMMARY.md          # This summary
 │
 ├── # EXISTING FILES #
 │
-├── code_corpus.txt              # Code training dataset (383KB)
 ├── train.py                     # Original training script
 ├── generate.py                  # Text generation script
-├── data.txt                     # Basic training data
 ├── requirements.txt             # Dependencies
 └── README.md                    # Project documentation
 ```

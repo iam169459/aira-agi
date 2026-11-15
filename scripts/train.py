@@ -6,8 +6,9 @@ from torch.nn import functional as F
 
 torch.manual_seed(42)
 
-DATA_FILE = "code_corpus.txt"
-CHECKPOINT = "tiny_model.pt"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_FILE = os.path.join(REPO_ROOT, "data", "code_corpus.txt")
+CHECKPOINT = os.path.join(REPO_ROOT, "tiny_model.pt")
 
 # Conservative starter settings for a 16 GB Mac.
 BLOCK_SIZE = 2048
@@ -22,7 +23,7 @@ N_LAYER = 16
 DROPOUT = 0.1
 
 if not os.path.exists(DATA_FILE):
-    raise FileNotFoundError("Create data.txt before training.")
+    raise FileNotFoundError("Create data/code_corpus.txt before training.")
 
 with open(DATA_FILE, encoding="utf-8") as f:
     text = f.read()

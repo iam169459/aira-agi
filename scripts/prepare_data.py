@@ -19,7 +19,8 @@ def collect_local_python_files(root_dir):
 
 if __name__ == '__main__':
     corpus = collect_local_python_files('.')
-    output_file = 'code_corpus.txt'
+    os.makedirs('data', exist_ok=True)
+    output_file = os.path.join('data', 'code_corpus.txt')
     with open(output_file, 'w', encoding='utf-8') as f_out:
         f_out.write(corpus)
     print(f"Success! Wrote {len(corpus)} characters from local Python files to {output_file}")
