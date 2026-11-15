@@ -35,7 +35,7 @@ except ImportError as e:
 
 # Import Girl Persona
 try:
-    from aira_persona import GirlPersona, Emotion
+    from modules.aira_persona import GirlPersona, Emotion
     PERSONA_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Girl Persona not available: {e}")

@@ -372,10 +372,10 @@ Aira: Wow, 20 is a great age! We're close in age! 🥰
 
 ### Customize Persona
 
-Modify `aira_persona.py` to change Aira's personality:
+Modify `modules/modules/aira_persona.py` to change Aira's personality:
 
 ```python
-from aira_persona import GirlPersona, PersonaConfig
+from modules.aira_persona import GirlPersona, PersonaConfig
 
 # Create custom configuration
 config = PersonaConfig(
@@ -424,7 +424,7 @@ girl_ai = GirlVoiceAI(
 Extend the persona with custom responses:
 
 ```python
-# In aira_persona.py, add to speech_patterns
+# In modules/aira_persona.py, add to speech_patterns
 self.speech_patterns[Emotion.HAPPY].extend([
     "I'm so happy I could scream!",
     "This is the best day ever!",
@@ -447,7 +447,7 @@ self.mannerisms["greetings"].extend([
 
 ```
 tiny-from-scratch/
-├── aira_persona.py          # Girl persona module
+├── modules/aira_persona.py          # Girl persona module
 ├── modules/
 │   └── tts_girl.py           # Enhanced girl voice TTS
 ├── voice_ai_girl.py          # Girl voice AI main script
@@ -456,7 +456,7 @@ tiny-from-scratch/
 
 ### Modules
 
-1. **aira_persona.py** (42KB)
+1. **modules/aira_persona.py** (42KB)
    - `GirlPersona` class: Main persona implementation
    - `PersonaConfig` dataclass: Configuration for persona
    - `Emotion` enum: Emotion types
@@ -585,7 +585,7 @@ Additional for best experience:
 
 ```python
 from agi_core.integration import AGIAgent
-from aira_persona import GirlPersona
+from modules.aira_persona import GirlPersona
 
 # Initialize AGI agent
 agent = AGIAgent(name="Aira", use_purple=True)
@@ -606,7 +606,7 @@ final_response = persona.add_emotion_to_response(agi_response['response'])
 ### Custom Emotion Handling
 
 ```python
-from aira_persona import GirlPersona, Emotion
+from modules.aira_persona import GirlPersona, Emotion
 
 persona = GirlPersona()
 

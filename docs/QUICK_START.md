@@ -18,8 +18,7 @@ python voice_ai.py --mode text
 python voice_ai.py --mode command
 
 # Interactive menu
-chmod +x scripts/start_voice_ai.sh
-./scripts/start_voice_ai.sh
+python aira.py
 ```
 
 ---
@@ -100,7 +99,7 @@ python voice_ai.py --mode voice
 ```
 tiny-from-scratch/
 ├── voice_ai.py                  # Voice-to-voice AI
-├── start_voice_ai.sh            # Interactive menu
+├── aira.py                      # Unified interactive launcher
 ├── train_configs.py             # Training configurations
 ├── daily_conversations.txt      # Conversation dataset
 ├── combined_training_data.txt   # Combined dataset

@@ -3,6 +3,7 @@ Main AI Integration - Brings all modules together
 Voice-to-voice conversation AI with emotion awareness, screen perception, 
 desktop automation, and self-healing capabilities
 """
+import os
 import sys
 import time
 import signal
@@ -10,7 +11,7 @@ import argparse
 from typing import Optional, Dict, Any
 
 # Add modules to path
-sys.path.insert(0, '/workspaces/tiny-from-scratch')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.emotion import EmotionFeatureExtractor, MoodState
 from modules.stt import STTModule

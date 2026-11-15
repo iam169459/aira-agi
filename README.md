@@ -100,9 +100,13 @@ aira-agi/
 ├── docs/                        # Documentation (guides, implementation)
 ├── LICENSE                      # MIT License
 ├── requirements.txt             # Python dependencies
+├── aira.py                      # Unified interactive launcher
+├── voice_ai_girl.py             # Girl persona voice AI (entry point)
+├── voice_ai.py                  # Classic voice AI (entry point)
+├── demo_girl_persona.py         # Persona demo (entry point)
 ├── data/                        # Training corpora (code, conversations)
 ├── scripts/                     # Training, generation, and test scripts
-├── __init__.py                  # Main entry point
+├── __init__.py                  # Package entry point
 ├── agi_state.json               # Persistent AGI state (auto-generated)
 │
 ├── agi_core/                    # AGI Core System (35+ modules)
@@ -240,7 +244,22 @@ Key packages from `requirements.txt`:
 
 ## Quick Start
 
-### Option 1: Run via Main Entry Point (Recommended)
+### Option 1: Run via Unified Launcher (Recommended)
+
+```bash
+python aira.py
+```
+
+An interactive menu for every mode: girl-persona voice chat, classic assistant, persona demo, training, generation, and tests. Shortcuts also work directly:
+
+```bash
+python aira.py girl     # girl voice conversation
+python aira.py text     # girl text conversation
+python aira.py demo     # persona demo
+python aira.py test     # AGI core test suite
+```
+
+### Option 2: Run via Main Entry Point
 
 ```bash
 python __init__.py

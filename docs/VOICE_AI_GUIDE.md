@@ -49,8 +49,7 @@ pip install sounddevice scipy librosa soundfile
 python voice_ai.py --mode voice
 
 # Or use the interactive menu
-chmod +x start_voice_ai.sh
-./start_voice_ai.sh
+python aira.py
 ```
 
 ### 3. Train Your Model

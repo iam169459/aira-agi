@@ -14,7 +14,7 @@ I've created a complete system to make Aira sound and behave like a **sweet, int
 
 | File | Size | Purpose |
 |------|------|---------|
-| `aira_persona.py` | 41KB | **Girl persona module** with emotions, speech patterns, and personality |
+| `modules/modules/aira_persona.py` | 41KB | **Girl persona module** with emotions, speech patterns, and personality |
 | `modules/tts_girl.py` | 16KB | **Enhanced TTS** with ultra-girl voice settings |
 | `voice_ai_girl.py` | 33KB | **Main girl voice AI** with full integration |
 | `GIRL_PERSONA_GUIDE.md` | 16KB | **Complete guide** for customization and usage |
@@ -284,7 +284,7 @@ python voice_ai_girl.py --mode voice --tts-volume 0.95
 
 ### Persona Customization
 
-Edit `aira_persona.py` to change personality:
+Edit `modules/modules/aira_persona.py` to change personality:
 
 ```python
 # Change age
@@ -334,7 +334,7 @@ User Voice Input
 
 ### Modules
 
-1. **aira_persona.py** - Girl persona with emotions and speech patterns
+1. **modules/aira_persona.py** - Girl persona with emotions and speech patterns
 2. **modules/tts_girl.py** - Enhanced TTS with ultra-girl voice
 3. **voice_ai_girl.py** - Main AI with full girl persona integration
 
@@ -427,7 +427,7 @@ Your AI is now a **sweet, intelligent, playful 17-18 year old girl** with:
 
 - **Documentation:** Read `GIRL_PERSONA_GUIDE.md` for details
 - **Issues:** Open a GitHub issue for problems
-- **Customization:** Edit `aira_persona.py` for your preferences
+- **Customization:** Edit `modules/modules/aira_persona.py` for your preferences
 - **Voice:** Try different settings with `--tts-rate` and `--tts-volume`
 
 ---
