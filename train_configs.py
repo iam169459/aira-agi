@@ -224,7 +224,6 @@ def get_balanced_config() -> TrainingConfig:
         name="Balanced",
         description="Balanced configuration for general-purpose AI",
         data_file="data/combined_training_data.txt",
-        data_files=["data/code_corpus.txt", "data/daily_conversations.txt", "data/combined_training_data.txt"],
         
         # Model architecture
         block_size=128,
@@ -328,7 +327,6 @@ def get_medium_config() -> TrainingConfig:
         name="Medium",
         description="Medium configuration for good performance",
         data_file="data/combined_training_data.txt",
-        data_files=["data/code_corpus.txt", "data/daily_conversations.txt", "data/combined_training_data.txt"],
         
         # Model architecture
         block_size=256,
@@ -362,7 +360,6 @@ def get_large_config() -> TrainingConfig:
         name="Large",
         description="Large configuration for maximum performance",
         data_file="data/combined_training_data.txt",
-        data_files=["data/code_corpus.txt", "data/daily_conversations.txt", "data/combined_training_data.txt"],
         
         # Model architecture - large
         block_size=512,

@@ -6,8 +6,6 @@ from torch.nn import functional as F
 
 torch.manual_seed(42)
 
-DATA_FILE = "data/code_corpus.txt"
-CHECKPOINT = "tiny_model.pt"
 
 # Conservative starter settings for a 16 GB Mac.
 BLOCK_SIZE = 2048

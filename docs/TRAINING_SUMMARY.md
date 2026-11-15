@@ -25,7 +25,6 @@ This document summarizes all the new files and capabilities added to train Aira 
 | File | Purpose | Size |
 |------|---------|------|
 | `voice_ai.py` | Main voice-to-voice AI script | 26KB |
-| `scripts/start_voice_ai.sh` | Interactive menu for voice AI | 2.4KB |
 
 **Features:**
 - Voice-to-voice conversation mode
@@ -76,8 +75,6 @@ python voice_ai.py --mode text
 python voice_ai.py --mode command
 
 # Use interactive menu
-chmod +x scripts/start_voice_ai.sh
-./scripts/start_voice_ai.sh
 ```
 
 ### 2. Training for Coding
@@ -482,19 +479,11 @@ tiny-from-scratch/
 ├── # NEW FILES #
 │
 ├── voice_ai.py                  # Voice-to-voice AI script
-├── scripts/start_voice_ai.sh            # Interactive menu
-├── train_configs.py             # Training configurations
-├── data/daily_conversations.txt      # Daily conversation dataset
-├── data/combined_training_data.txt   # Combined training dataset
 ├── VOICE_AI_GUIDE.md            # Complete guide
 └── TRAINING_SUMMARY.md          # This summary
 │
 ├── # EXISTING FILES #
 │
-├── data/code_corpus.txt              # Code training dataset (383KB)
-├── train.py                     # Original training script
-├── generate.py                  # Text generation script
-├── data/data.txt                     # Basic training data
 ├── requirements.txt             # Dependencies
 └── README.md                    # Project documentation
 ```

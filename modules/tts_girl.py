@@ -7,6 +7,12 @@ It enhances pyttsx3 with:
 - More expressive speech patterns
 - Emotion-based voice modulation
 - Girl-specific voice characteristics
+
+Human-like speech layer:
+- Breath groups with natural pauses and rhythm
+- Synthesized breathing sounds between phrases
+- Fillers, hesitations and contractions ("um", "hmm", "I'm", ...)
+- Streaming playback: first phrase is spoken while the rest renders
 """
 
 import pyttsx3
@@ -15,8 +21,25 @@ import tempfile
 import os
 import sys
 import time
-from typing import Optional, Dict, Any
+import random
+import re
+import wave
+from typing import Optional, Dict, Any, List, Tuple
 import platform
+
+try:
+    import sounddevice as sd
+    SD_AVAILABLE = True
+except Exception:
+    sd = None
+    SD_AVAILABLE = False
+
+try:
+    from piper import PiperVoice
+    PIPER_AVAILABLE = True
+except Exception:
+    PiperVoice = None
+    PIPER_AVAILABLE = False
 
 
 class GirlVoiceTTS:
@@ -51,6 +74,23 @@ class GirlVoiceTTS:
         self.temp_dir = None
         self.current_emotion = "neutral"
         self.voice_id = None
+        
+        # Human-like speech settings
+        self.human_like = True
+        self.breathing = True
+        self.filler_chance = 0.22
+        self.hesitation_chance = 0.10
+        self.laugh_chance = 0.12
+        self.breath_chance = 0.28
+        self._rng = random.Random()
+        self._nprng = np.random.default_rng()
+        self._emotion_settings = {"rate": rate, "volume": volume, "pitch": pitch}
+        self.piper_voice = None
+        self.piper_model = None
+        
+        # Optional neural voice: much more realistic when a Piper model exists
+        if PIPER_AVAILABLE:
+            self._try_load_piper()
         
         # Platform-specific settings
         self.platform = platform.system().lower()
@@ -234,6 +274,7 @@ class GirlVoiceTTS:
         }
         
         settings = emotion_settings.get(emotion, emotion_settings["neutral"])
+        self._emotion_settings = dict(settings)
         
         try:
             self.engine.setProperty('rate', settings["rate"])
@@ -245,52 +286,366 @@ class GirlVoiceTTS:
         except Exception as e:
             print(f"⚠️ Could not apply emotion settings: {e}")
     
-    def speak(self, text: str, emotion: str = None, block: bool = True) -> Optional[str]:
+    # ------------------------------------------------------------------
+    # Human-like speech layer
+    # ------------------------------------------------------------------
+    
+    _CONTRACTIONS = [
+        (r"\bI am\b", "I'm"), (r"\bi am\b", "I'm"),
+        (r"\byou are\b", "you're"), (r"\bYou are\b", "You're"),
+        (r"\bwe are\b", "we're"), (r"\bWe are\b", "We're"),
+        (r"\bthey are\b", "they're"), (r"\bThat is\b", "That's"),
+        (r"\bthat is\b", "that's"), (r"\bIt is\b", "It's"),
+        (r"\bit is\b", "it's"), (r"\bWhat is\b", "What's"),
+        (r"\bwhat is\b", "what's"), (r"\bdo not\b", "don't"),
+        (r"\bDo not\b", "Don't"), (r"\bdoes not\b", "doesn't"),
+        (r"\bis not\b", "isn't"), (r"\bare not\b", "aren't"),
+        (r"\bcannot\b", "can't"), (r"\bcan not\b", "can't"),
+        (r"\bwill not\b", "won't"), (r"\bwould not\b", "wouldn't"),
+        (r"\bI will\b", "I'll"), (r"\bI have\b", "I've"),
+        (r"\bI would\b", "I'd"), (r"\bgoing to\b", "gonna"),
+        (r"\bwant to\b", "wanna"), (r"\bkind of\b", "kinda"),
+    ]
+    
+    _STARTERS = ["Hmm,", "Well,", "Okay so,", "You know,", "Mmm,", "Let's see,"]
+    
+    _HESITATIONS = ["um", "like", "I mean", "you know", "uhm"]
+    
+    _PAUSE_MOD = {
+        "excited": 0.70, "surprised": 0.75, "playful": 0.80, "happy": 0.85,
+        "neutral": 1.0, "flirty": 1.05, "embarrassed": 1.15, "shy": 1.20,
+        "calm": 1.30, "sad": 1.45,
+    }
+    
+    _BREATH_MOD = {
+        "excited": 0.4, "surprised": 0.5, "playful": 0.6, "happy": 0.7,
+        "neutral": 1.0, "flirty": 1.1, "shy": 1.2, "embarrassed": 1.2,
+        "calm": 1.5, "sad": 1.6,
+    }
+    
+    def _try_load_piper(self):
+        """Load a Piper neural voice model if one is available."""
+        try:
+            candidates = []
+            env_model = os.environ.get("AIRA_PIPER_MODEL")
+            if env_model:
+                candidates.append(env_model)
+            models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "piper")
+            if os.path.isdir(models_dir):
+                candidates.extend(
+                    os.path.join(models_dir, f) for f in sorted(os.listdir(models_dir)) if f.endswith(".onnx")
+                )
+            
+            for model_path in candidates:
+                if not os.path.exists(model_path):
+                    continue
+                config_path = model_path + ".json"
+                try:
+                    self.piper_voice = PiperVoice.load(model_path, config_path=config_path)
+                except TypeError:
+                    self.piper_voice = PiperVoice.load(model_path)
+                self.piper_model = model_path
+                print(f"🧠 Neural voice loaded: {os.path.basename(model_path)}")
+                return
+        except Exception as e:
+            print(f"⚠️ Neural voice unavailable ({e}), using pyttsx3")
+        self.piper_voice = None
+    
+    def _humanize_text(self, text: str, emotion: str = None) -> str:
+        """Add contractions, fillers and hesitations so the reply sounds spoken, not read."""
+        result = text.strip()
+        if not result:
+            return result
+        
+        for pattern, replacement in self._CONTRACTIONS:
+            result = re.sub(pattern, replacement, result)
+        
+        starter_chance = self.filler_chance
+        if emotion in ("shy", "embarrassed", "sad"):
+            starter_chance += 0.10
+        elif emotion in ("excited", "surprised"):
+            starter_chance -= 0.12
+        
+        if self._rng.random() < starter_chance:
+            starter = self._rng.choice(self._STARTERS)
+            words = result.split()
+            first = words[0]
+            if first not in ("I", "I'm", "I'll", "I've", "I'd", "Oh", "Okay", "Yes", "No", "You"):
+                result = f"{starter} {first[0].lower() + first[1:]}{' ' + ' '.join(words[1:]) if len(words) > 1 else ''}"
+            else:
+                result = f"{starter} {result}"
+        
+        if self._rng.random() < self.hesitation_chance:
+            commas = [m.start() + 1 for m in re.finditer(r",", result)]
+            if commas:
+                pos = self._rng.choice(commas)
+                filler = self._rng.choice(self._HESITATIONS)
+                result = f"{result[:pos]} {filler},{result[pos:]}"
+        
+        if (emotion in ("happy", "excited", "playful", "flirty")
+                and result.endswith(("!", "?"))
+                and self._rng.random() < self.laugh_chance):
+            result = f"{result} Hehe!"
+        
+        if emotion in ("excited", "playful", "happy") and self._rng.random() < 0.18:
+            result = self._elongate_word(result)
+        
+        if result[-1] not in ".!?…,":
+            result += "."
+        
+        return result
+    
+    _ELONGATIONS = {"so": "sooo", "really": "reaally", "very": "veery", "oh": "ohh", "wow": "woow"}
+    
+    def _elongate_word(self, text: str) -> str:
+        """Stretch one word ("so" -> "sooo") the way people do when excited."""
+        words = text.split()
+        spots = [i for i, w in enumerate(words) if w.lower().strip(".,!?") in self._ELONGATIONS]
+        if not spots:
+            return text
+        i = self._rng.choice(spots)
+        word = words[i]
+        stem = word.rstrip(".,!?")
+        stretched = self._ELONGATIONS[stem.lower()]
+        if stem[0].isupper():
+            stretched = stretched.capitalize()
+        suffix = word[len(stem):] if stem != word else ""
+        words[i] = stretched + suffix
+        return " ".join(words)
+    
+    def _split_breath_groups(self, text: str, max_words: int = 10) -> List[str]:
+        """Split text into short breath-sized groups a person would say in one breath."""
+        groups: List[str] = []
+        
+        for sentence in re.split(r"(?<=[.!?…])\s+", text.strip()):
+            if not sentence:
+                continue
+            buf = ""
+            for clause in re.split(r"(?<=,)\s+", sentence):
+                for piece in self._split_long_clause(clause, max_words):
+                    candidate = f"{buf} {piece}".strip()
+                    if buf and len(candidate.split()) > max_words:
+                        groups.append(buf)
+                        buf = piece
+                    else:
+                        buf = candidate
+            if buf:
+                groups.append(buf)
+        
+        return groups
+    
+    def _split_long_clause(self, clause: str, max_words: int) -> List[str]:
+        """Break comma-less clauses into smaller chunks."""
+        words = clause.split()
+        if len(words) <= max_words * 1.6:
+            return [clause]
+        size = max(4, max_words // 2 + 2)
+        return [" ".join(words[i:i + size]) for i in range(0, len(words), size)]
+    
+    def _group_pause(self, group: str, emotion: str = None) -> float:
+        """Natural silence after a group: longer at sentence ends, modulated by emotion."""
+        base = 0.38 if group.rstrip().endswith((".", "!", "?", "…")) else 0.16
+        mod = self._PAUSE_MOD.get((emotion or "neutral").lower(), 1.0)
+        return base * mod * (0.85 + 0.30 * self._rng.random())
+    
+    def _make_breath(self, sr: int = 22050, duration: float = 0.32, strength: float = 1.0) -> np.ndarray:
+        """Synthesize a soft inhale: smoothed noise with a rising envelope."""
+        n = max(1, int(sr * duration))
+        noise = self._nprng.standard_normal(n)
+        win = max(3, int(sr * 0.004))
+        noise = np.convolve(noise, np.ones(win) / win, mode="same")
+        t = np.linspace(0.0, 1.0, n)
+        envelope = (np.sin(np.pi * t) ** 1.5) * (0.35 + 0.65 * t)
+        return (noise * envelope * 0.12 * strength).astype(np.float32)
+    
+    def _load_wav(self, path: str) -> Tuple[Optional[np.ndarray], Optional[int]]:
+        """Load a wav file as float32 mono samples plus its sample rate."""
+        try:
+            with wave.open(path, "rb") as w:
+                sr = w.getframerate()
+                channels = w.getnchannels()
+                width = w.getsampwidth()
+                raw = w.readframes(w.getnframes())
+            
+            if width == 2:
+                audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+            elif width == 4:
+                audio = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483648.0
+            elif width == 1:
+                audio = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+            else:
+                return None, None
+            
+            if channels > 1:
+                audio = audio.reshape(-1, channels).mean(axis=1)
+            return audio, sr
+        except Exception:
+            return None, None
+    
+    _SOFT_STARTS = ("hmm", "well", "mmm", "okay so", "you know", "let's see", "um", "uhm", "i mean")
+    
+    def _apply_prosody(self, text: str):
+        """Vary rate/pitch/volume around the emotion baseline so phrases don't sound identical.
+        Filler phrases ("Hmm,", "well...") are spoken softer and slower, like real mumbles."""
+        try:
+            base = self._emotion_settings
+            soft = text.strip().lower().startswith(self._SOFT_STARTS)
+            rate_mult = 0.90 if soft else 0.96 + 0.08 * self._rng.random()
+            vol_mult = 0.78 if soft else 0.95 + 0.07 * self._rng.random()
+            pitch_mult = 0.96 + 0.08 * self._rng.random()
+            
+            self.engine.setProperty('rate', int(base["rate"] * rate_mult))
+            self.engine.setProperty('volume', min(base["volume"] * vol_mult, 1.0))
+            try:
+                self.engine.setProperty('pitch', int(base["pitch"] * pitch_mult))
+            except Exception:
+                pass
+        except Exception:
+            pass
+    
+    def _apply_fades(self, audio: np.ndarray, sr: int) -> np.ndarray:
+        """Fade in/out to remove clicks between phrases and soften edges."""
+        fade_in = max(1, int(sr * 0.012))
+        fade_out = max(1, int(sr * 0.045))
+        if len(audio) <= fade_in + fade_out:
+            return audio
+        audio = audio.copy()
+        audio[:fade_in] *= np.linspace(0.0, 1.0, fade_in)
+        audio[-fade_out:] *= np.linspace(1.0, 0.0, fade_out)
+        return audio
+    
+    def _render_group(self, text: str) -> Tuple[Optional[np.ndarray], Optional[int]]:
+        """Render one breath group to PCM samples via the TTS engine."""
+        try:
+            if self.temp_dir is None:
+                self.temp_dir = tempfile.mkdtemp()
+            path = os.path.join(self.temp_dir, f"aira_{int(time.time() * 1000000)}.wav")
+            
+            if self.piper_voice is not None:
+                with wave.open(path, "wb") as w:
+                    if hasattr(self.piper_voice, "synthesize_wav"):
+                        self.piper_voice.synthesize_wav(text, w)
+                    else:
+                        self.piper_voice.synthesize(text, w)
+            else:
+                self._apply_prosody(text)
+                self.engine.save_to_file(text, path)
+                self.engine.runAndWait()
+            
+            audio, sr = self._load_wav(path)
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            if audio is not None:
+                audio = self._apply_fades(audio, sr or 22050)
+            return audio, sr
+        except Exception as e:
+            print(f"⚠️ Could not render speech group: {e}")
+            return None, None
+    
+    def _save_combined(self, pieces: List[np.ndarray], sr: int) -> Optional[str]:
+        """Concatenate rendered pieces (speech, breaths, silences) into one wav file."""
+        try:
+            pieces = [p for p in pieces if p is not None and len(p) > 0]
+            if not pieces:
+                return None
+            combined = np.concatenate(pieces)
+            pcm = (np.clip(combined, -1.0, 1.0) * 32767).astype(np.int16)
+            if self.temp_dir is None:
+                self.temp_dir = tempfile.mkdtemp()
+            path = os.path.join(self.temp_dir, f"aira_{int(time.time() * 1000000)}.wav")
+            with wave.open(path, "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(sr)
+                w.writeframes(pcm.tobytes())
+            return path
+        except Exception as e:
+            print(f"⚠️ Could not save combined audio: {e}")
+            return None
+    
+    def speak(self, text: str, emotion: str = None, block: bool = True, play: bool = False) -> Optional[str]:
         """
-        Speak text with girl voice
+        Speak text with a human-like rhythm.
+        
+        The text is split into breath groups. Between groups Aira takes short
+        pauses and occasionally audibly breathes in. With play=True the first
+        group is played the moment it is rendered, so she answers faster.
         
         Args:
             text: Text to speak
             emotion: Emotion for voice modulation (optional)
             block: Whether to block until speech completes
+            play: Stream audio through the speakers inside this call
             
         Returns:
-            Path to saved audio file, or None if TTS not available
+            Path to saved audio file, or None when streamed or unavailable
         """
         if not self._init_successful or self.engine is None:
-            # Fallback to text output
-            print(f"[Aira (girl voice)]: {text}")
+            if not play:
+                print(f"[Aira (girl voice)]: {text}")
             return None
         
-        # Set emotion if provided
+        if not text or not text.strip():
+            return None
+        
         if emotion:
             self.set_emotion(emotion)
         
+        if self.human_like:
+            text = self._humanize_text(text, emotion)
+        
+        groups = self._split_breath_groups(text)
+        if not groups:
+            return None
+        
+        stream = play and SD_AVAILABLE
+        chunks: List[np.ndarray] = []
+        pieces: List[np.ndarray] = []
+        sr = 22050
+        breath_mod = self._BREATH_MOD.get((emotion or "neutral").lower(), 1.0)
+        
         try:
-            # Create temp directory if needed
-            if self.temp_dir is None:
-                self.temp_dir = tempfile.mkdtemp()
+            for i, group in enumerate(groups):
+                audio, group_sr = self._render_group(group)
+                if audio is None or group_sr is None:
+                    continue
+                sr = group_sr
+                chunks.append(audio)
+                
+                if stream:
+                    if i == 0 and self.breathing:
+                        sd.play(self._make_breath(sr, strength=0.9), sr)
+                        sd.wait()
+                        time.sleep(0.05)
+                    sd.play(audio, sr)
+                    if block:
+                        sd.wait()
+                    if i < len(groups) - 1:
+                        time.sleep(self._group_pause(group, emotion))
+                        if self.breathing and self._rng.random() < self.breath_chance * breath_mod:
+                            sd.play(self._make_breath(sr), sr)
+                            if block:
+                                sd.wait()
+                else:
+                    if i == 0 and self.breathing:
+                        pieces.append(self._make_breath(sr, strength=0.9))
+                        pieces.append(np.zeros(int(sr * 0.05), dtype=np.float32))
+                    pieces.append(audio)
+                    if i < len(groups) - 1:
+                        pieces.append(np.zeros(int(sr * self._group_pause(group, emotion)), dtype=np.float32))
+                        if self.breathing and self._rng.random() < self.breath_chance * breath_mod:
+                            pieces.append(self._make_breath(sr))
             
-            # Generate unique filename
-            timestamp = int(time.time() * 1000)
-            audio_path = os.path.join(self.temp_dir, f"aira_{timestamp}.wav")
-            
-            # Save to file
-            self.engine.save_to_file(text, audio_path)
-            
-            # Speak
-            if block:
-                self.engine.runAndWait()
-            else:
-                self.engine.startLoop(False)
-                self.engine.iterate()
-            
-            return audio_path
+            if stream:
+                return None
+            return self._save_combined(pieces, sr)
             
         except Exception as e:
             print(f"❌ TTS error: {e}")
-            # Fallback to text output
-            print(f"[Aira (girl voice)]: {text}")
+            if not play:
+                print(f"[Aira (girl voice)]: {text}")
             return None
     
     def speak_immediate(self, text: str, emotion: str = None):
@@ -301,7 +656,7 @@ class GirlVoiceTTS:
             text: Text to speak
             emotion: Emotion for voice modulation
         """
-        self.speak(text, emotion, block=True)
+        self.speak(text, emotion, block=True, play=True)
     
     def stop(self):
         """Stop current speech"""

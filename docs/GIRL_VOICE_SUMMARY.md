@@ -14,7 +14,6 @@ I've created a complete system to make Aira sound and behave like a **sweet, int
 
 | File | Size | Purpose |
 |------|------|---------|
-| `modules/aira_persona.py` | 41KB | **Girl persona module** with emotions, speech patterns, and personality |
 | `modules/tts_girl.py` | 16KB | **Enhanced TTS** with ultra-girl voice settings |
 | `voice_ai_girl.py` | 33KB | **Main girl voice AI** with full integration |
 | `GIRL_PERSONA_GUIDE.md` | 16KB | **Complete guide** for customization and usage |
@@ -66,6 +65,35 @@ python voice_ai_girl.py --mode command
 - **Angry:** Faster, normal pitch, louder
 - **Shy:** Slower, lower pitch, very quiet
 - **Playful:** Fast, high pitch, normal volume
+
+### Human-Like Speech Rhythm
+
+Aira no longer reads text like a robot. Her replies are spoken the way a person talks:
+
+- **Breath groups** - Replies are split into short phrases (about 10 words) with natural pauses between them, like someone taking a breath mid-sentence
+- **Audible breathing** - A soft synthesized inhale plays before she starts and occasionally between phrases (more when calm or sad, less when excited)
+- **Emotion-paced pauses** - Excited = quicker rhythm, sad/calm = slower, heavier pauses
+- **Fillers and hesitations** - Natural spoken touches like "Hmm,", "Well,", "um", "you know", plus contractions ("I'm", "wanna", "gonna") and a little "Hehe!" when she's happy
+- **Streaming playback** - The first phrase is spoken the moment it is ready instead of waiting for the whole reply to render, so she responds noticeably faster
+
+Tune it in `modules/tts_girl.py`: `human_like`, `breathing`, `filler_chance`, `hesitation_chance`, `breath_chance`.
+
+### Neural Voice (Optional, Most Realistic)
+
+For a fully natural-sounding voice, Aira can use a neural Piper voice instead of the OS voice:
+
+```bash
+pip install piper-tts
+python setup_neural_voice.py
+```
+
+The model is downloaded once into `models/piper/` and detected automatically on startup (you'll see `🧠 Neural voice loaded`). All the human-like rhythm features above work the same; set `AIRA_PIPER_MODEL` to use a custom `.onnx` voice. Without Piper installed, Aira falls back to pyttsx3.
+
+Additional realism on the built-in voice:
+- **Prosody micro-variation** - rate, pitch and volume drift slightly around the emotion baseline on every phrase, so no two phrases sound identical
+- **Soft fillers** - "Hmm," and "well..." are mumbled quieter and slower, like real thinking
+- **Word stretching** - when excited she may say "sooo" or "reaally"
+- **Click-free phrasing** - every phrase gets a tiny fade-in/fade-out
 
 ---
 
@@ -255,7 +283,6 @@ python voice_ai_girl.py --mode voice --tts-volume 0.95
 
 ### Persona Customization
 
-Edit `modules/aira_persona.py` to change personality:
 
 ```python
 # Change age
@@ -398,7 +425,6 @@ Your AI is now a **sweet, intelligent, playful 17-18 year old girl** with:
 
 - **Documentation:** Read `GIRL_PERSONA_GUIDE.md` for details
 - **Issues:** Open a GitHub issue for problems
-- **Customization:** Edit `modules/aira_persona.py` for your preferences
 - **Voice:** Try different settings with `--tts-rate` and `--tts-volume`
 
 ---

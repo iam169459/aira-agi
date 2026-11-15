@@ -18,8 +18,6 @@ python voice_ai.py --mode text
 python voice_ai.py --mode command
 
 # Interactive menu
-chmod +x scripts/start_voice_ai.sh
-./scripts/start_voice_ai.sh
 ```
 
 ---
@@ -29,31 +27,31 @@ chmod +x scripts/start_voice_ai.sh
 ### 1. Coding Assistant
 ```bash
 # Generate training script
-python train_configs.py --generate coding > train_coding.py
+python scripts/train_configs.py --generate coding > train_coding.py
 
 # Train model (creates coding_model.pt)
 python train_coding.py
 
 # Use the model
-python generate.py --checkpoint coding_model.pt --prompt "Write a Python function"
+python scripts/generate.py --checkpoint coding_model.pt --prompt "Write a Python function"
 ```
 
 ### 2. Daily Conversation AI
 ```bash
 # Generate training script
-python train_configs.py --generate daily > train_daily.py
+python scripts/train_configs.py --generate daily > train_daily.py
 
 # Train model (creates daily_model.pt)
 python train_daily.py
 
 # Use the model
-python generate.py --checkpoint daily_model.pt --prompt "What should I cook?"
+python scripts/generate.py --checkpoint daily_model.pt --prompt "What should I cook?"
 ```
 
 ### 3. Voice AI Specialist
 ```bash
 # Generate training script
-python train_configs.py --generate voice > train_voice.py
+python scripts/train_configs.py --generate voice > train_voice.py
 
 # Train model (creates voice_model.pt)
 python train_voice.py
@@ -100,10 +98,6 @@ python voice_ai.py --mode voice
 ```
 tiny-from-scratch/
 ├── voice_ai.py                  # Voice-to-voice AI
-├── voice_ai_girl.py             # Voice AI with persona
-├── scripts/
-│   ├── start_voice_ai.sh        # Interactive menu
-│   └── run_assistant.py         # Main entry point
 ├── train_configs.py             # Training configurations
 ├── modules/
 │   └── aira_persona.py          # Girl persona module

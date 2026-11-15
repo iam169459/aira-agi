@@ -11,6 +11,7 @@ tiny_model.pt
 data-private.txt
 datasets/
 checkpoints/
+models/
 
 # Generated training scripts and runtime state
 train_coding.py

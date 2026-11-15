@@ -18,11 +18,6 @@ def collect_local_python_files(root_dir):
     return ''.join(texts)
 
 if __name__ == '__main__':
-    project_root = Path(__file__).resolve().parent.parent
-    corpus = collect_local_python_files(project_root)
-    output_dir = project_root / 'data'
-    output_dir.mkdir(exist_ok=True)
-    output_file = output_dir / 'code_corpus.txt'
     with open(output_file, 'w', encoding='utf-8') as f_out:
         f_out.write(corpus)
     print(f"Success! Wrote {len(corpus)} characters from local Python files to {output_file}")

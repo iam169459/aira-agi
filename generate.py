@@ -1,5 +1,6 @@
 import argparse
 import math
+import os
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -95,7 +96,7 @@ class TinyGPT(nn.Module):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", default="tiny_model.pt")
+    parser.add_argument("--checkpoint", default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tiny_model.pt"))
     parser.add_argument("--prompt", default="A language model")
     parser.add_argument("--tokens", type=int, default=300)
     parser.add_argument("--temperature", type=float, default=0.8)

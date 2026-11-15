@@ -248,7 +248,7 @@ def demo_all_features():
     print("\nNow try the real thing:")
     print("  [36mpython voice_ai_girl.py --mode voice[0m")
     print("\nOr read the full guide:")
-    print("  [36mcat GIRL_PERSONA_GUIDE.md[0m")
+    print("  [36mcat docs/GIRL_PERSONA_GUIDE.md[0m")
     print("=" * 70 + "\n")
 
 

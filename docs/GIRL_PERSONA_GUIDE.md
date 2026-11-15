@@ -372,7 +372,6 @@ Aira: Wow, 20 is a great age! We're close in age! 🥰
 
 ### Customize Persona
 
-Modify `modules/aira_persona.py` to change Aira's personality:
 
 ```python
 from modules.aira_persona import GirlPersona, PersonaConfig
