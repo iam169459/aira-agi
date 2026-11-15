@@ -49,8 +49,8 @@ pip install sounddevice scipy librosa soundfile
 python voice_ai.py --mode voice
 
 # Or use the interactive menu
-chmod +x start_voice_ai.sh
-./start_voice_ai.sh
+chmod +x scripts/start_voice_ai.sh
+./scripts/start_voice_ai.sh
 ```
 
 ### 3. Train Your Model
@@ -185,25 +185,25 @@ python voice_ai.py --mode voice --no-female
 
 The project includes several training datasets:
 
-1. **code_corpus.txt** (383KB)
+1. **data/code_corpus.txt** (383KB)
    - Python, JavaScript, and other code examples
    - Technical documentation
    - Algorithm explanations
    - Best for: Coding assistant
 
-2. **daily_conversations.txt** (17KB)
+2. **data/daily_conversations.txt** (17KB)
    - General conversation patterns
    - Daily life questions and answers
    - Personal assistance scenarios
    - Best for: Daily conversation AI
 
-3. **combined_training_data.txt** (14KB)
+3. **data/combined_training_data.txt** (14KB)
    - Combination of code and conversation data
    - Voice interaction patterns
    - Multi-turn conversations
    - Best for: General-purpose AI
 
-4. **data.txt** (Original)
+4. **data/data.txt** (Original)
    - Basic language model training data
    - Simple examples
    - Best for: Quick testing
@@ -320,7 +320,7 @@ from train_configs import TrainingConfig
 config = TrainingConfig(
     name="My Custom Model",
     description="Custom model for my specific needs",
-    data_files=["code_corpus.txt", "daily_conversations.txt"],
+    data_files=["data/code_corpus.txt", "data/daily_conversations.txt"],
     
     # Model architecture
     block_size=128,
@@ -355,7 +355,7 @@ from train_configs import TrainingConfig
 
 config = TrainingConfig(
     name="My Model",
-    data_files=["code_corpus.txt", "daily_conversations.txt"],
+    data_files=["data/code_corpus.txt", "data/daily_conversations.txt"],
     block_size=128,
     n_embd=256,
     n_head=4,

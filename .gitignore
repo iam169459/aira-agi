@@ -12,5 +12,11 @@ data-private.txt
 datasets/
 checkpoints/
 
+# Generated training scripts and runtime state
+train_coding.py
+train_daily.py
+train_voice.py
+agi_state.json
+
 # macOS
 .DS_Store

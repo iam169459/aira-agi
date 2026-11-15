@@ -18,7 +18,7 @@ class TrainingConfig:
     """Training configuration for TinyGPT model"""
     
     # Dataset configuration
-    data_file: str = "data.txt"
+    data_file: str = "data/data.txt"
     data_files: List[str] = field(default_factory=list)
     
     # Model architecture
@@ -107,8 +107,8 @@ def get_coding_config() -> TrainingConfig:
     return TrainingConfig(
         name="Coding Assistant",
         description="Optimized for code generation and technical understanding",
-        data_file="code_corpus.txt",
-        data_files=["code_corpus.txt", "combined_training_data.txt"],
+        data_file="data/code_corpus.txt",
+        data_files=["data/code_corpus.txt", "data/combined_training_data.txt"],
         
         # Model architecture - larger for code
         block_size=256,
@@ -146,8 +146,8 @@ def get_daily_config() -> TrainingConfig:
     return TrainingConfig(
         name="Daily Conversation",
         description="Optimized for general conversation and daily assistance",
-        data_file="daily_conversations.txt",
-        data_files=["daily_conversations.txt", "combined_training_data.txt"],
+        data_file="data/daily_conversations.txt",
+        data_files=["data/daily_conversations.txt", "data/combined_training_data.txt"],
         
         # Model architecture
         block_size=128,
@@ -185,8 +185,8 @@ def get_voice_config() -> TrainingConfig:
     return TrainingConfig(
         name="Voice AI",
         description="Optimized for voice interaction patterns",
-        data_file="combined_training_data.txt",
-        data_files=["combined_training_data.txt"],
+        data_file="data/combined_training_data.txt",
+        data_files=["data/combined_training_data.txt"],
         
         # Model architecture - smaller and faster
         block_size=64,
@@ -223,8 +223,8 @@ def get_balanced_config() -> TrainingConfig:
     return TrainingConfig(
         name="Balanced",
         description="Balanced configuration for general-purpose AI",
-        data_file="combined_training_data.txt",
-        data_files=["code_corpus.txt", "daily_conversations.txt", "combined_training_data.txt"],
+        data_file="data/combined_training_data.txt",
+        data_files=["data/code_corpus.txt", "data/daily_conversations.txt", "data/combined_training_data.txt"],
         
         # Model architecture
         block_size=128,
@@ -261,8 +261,8 @@ def get_tiny_config() -> TrainingConfig:
     return TrainingConfig(
         name="Tiny",
         description="Minimal configuration for low-resource environments",
-        data_file="data.txt",
-        data_files=["data.txt"],
+        data_file="data/data.txt",
+        data_files=["data/data.txt"],
         
         # Model architecture - minimal
         block_size=64,
@@ -294,8 +294,8 @@ def get_small_config() -> TrainingConfig:
     return TrainingConfig(
         name="Small",
         description="Small configuration for moderate resources",
-        data_file="combined_training_data.txt",
-        data_files=["combined_training_data.txt"],
+        data_file="data/combined_training_data.txt",
+        data_files=["data/combined_training_data.txt"],
         
         # Model architecture
         block_size=128,
@@ -327,8 +327,8 @@ def get_medium_config() -> TrainingConfig:
     return TrainingConfig(
         name="Medium",
         description="Medium configuration for good performance",
-        data_file="combined_training_data.txt",
-        data_files=["code_corpus.txt", "daily_conversations.txt", "combined_training_data.txt"],
+        data_file="data/combined_training_data.txt",
+        data_files=["data/code_corpus.txt", "data/daily_conversations.txt", "data/combined_training_data.txt"],
         
         # Model architecture
         block_size=256,
@@ -361,8 +361,8 @@ def get_large_config() -> TrainingConfig:
     return TrainingConfig(
         name="Large",
         description="Large configuration for maximum performance",
-        data_file="combined_training_data.txt",
-        data_files=["code_corpus.txt", "daily_conversations.txt", "combined_training_data.txt"],
+        data_file="data/combined_training_data.txt",
+        data_files=["data/code_corpus.txt", "data/daily_conversations.txt", "data/combined_training_data.txt"],
         
         # Model architecture - large
         block_size=512,
@@ -510,7 +510,7 @@ for data_file in DATA_FILES:
         with open(data_file, encoding="utf-8") as f:
             text += f.read() + "\\n\\n"
     else:
-        print(f"Warning: Data file not found: {data_file}")
+        print(f"Warning: Data file not found: {{data_file}}")
 
 if len(text) < 2 * BLOCK_SIZE + 20:
     raise ValueError(

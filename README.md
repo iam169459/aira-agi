@@ -97,14 +97,39 @@ Aira implements all of these capabilities in an integrated, lightweight, and ful
 ```
 aira-agi/
 ├── README.md                    # Project documentation
-├── AGI_IMPLEMENTATION.md        # Detailed technical implementation
 ├── LICENSE                      # MIT License
 ├── requirements.txt             # Python dependencies
-├── data.txt                     # Training corpus
+│
+├── docs/                        # Guides & technical documentation
+│   ├── AGI_IMPLEMENTATION.md    # Detailed technical implementation
+│   ├── QUICK_START.md           # Getting started guide
+│   ├── VOICE_AI_GUIDE.md        # Voice AI guide
+│   ├── GIRL_PERSONA_GUIDE.md    # Persona guide
+│   ├── GIRL_VOICE_SUMMARY.md    # Persona voice summary
+│   └── TRAINING_SUMMARY.md      # Training summary
+│
+├── data/                        # Training corpora
+│   ├── data.txt                 # Base training corpus
+│   ├── code_corpus.txt          # Code dataset
+│   ├── daily_conversations.txt  # Conversation dataset
+│   └── combined_training_data.txt # Combined dataset
+│
+├── scripts/                     # Utility scripts
+│   ├── run_assistant.py         # Main entry point
+│   ├── start_voice_ai.sh        # Interactive voice AI menu
+│   └── prepare_data.py          # Corpus preparation script
+│
+├── tests/
+│   └── test_agi_core.py         # Comprehensive test suite
+│
+├── examples/
+│   └── demo_girl_persona.py     # Persona demo
+│
 ├── train.py                     # Transformer training script
+├── train_configs.py             # Training configurations
 ├── generate.py                  # Text generation script
-├── test_agi_core.py             # Comprehensive test suite
-├── __init__.py                  # Main entry point
+├── voice_ai.py                  # Voice AI assistant
+├── voice_ai_girl.py             # Voice AI with persona
 ├── agi_state.json               # Persistent AGI state (auto-generated)
 │
 ├── agi_core/                    # AGI Core System (35+ modules)
@@ -245,7 +270,7 @@ Key packages from `requirements.txt`:
 ### Option 1: Run via Main Entry Point (Recommended)
 
 ```bash
-python __init__.py
+python scripts/run_assistant.py
 ```
 
 This will check dependencies, initialize all components, and launch the multi-modal AI assistant.
@@ -425,7 +450,7 @@ Aira includes a minimal character-level transformer for training on custom data.
 
 #### Prepare Training Data
 
-Edit `data.txt` with your training corpus (plain text):
+Edit `data/data.txt` with your training corpus (plain text):
 
 ```text
 Your training data here...
@@ -530,7 +555,7 @@ agent = AGIAgent(
 ### Run All Tests
 
 ```bash
-python test_agi_core.py
+python tests/test_agi_core.py
 ```
 
 ### Test Output
@@ -749,7 +774,7 @@ We welcome contributions from the community! Here's how you can help:
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes following existing code style
-4. Test thoroughly (`python test_agi_core.py`)
+4. Test thoroughly (`python tests/test_agi_core.py`)
 5. Commit with clear messages (`git commit -m 'Add amazing feature'`)
 6. Push to branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request

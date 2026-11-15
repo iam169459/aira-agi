@@ -86,7 +86,7 @@ tiny-from-scratch/
 │       ├── transformer_integration.py # TinyGPT integration
 │       └── llm_reasoning_engine.py    # LLM-enhanced reasoning
 │
-├── test_agi_core.py                   # Comprehensive test suite
+├── tests/test_agi_core.py                   # Comprehensive test suite
 └── AGI_IMPLEMENTATION.md              # This file
 ```
 
@@ -318,14 +318,14 @@ Run the comprehensive test suite:
 
 ```bash
 # Quick test (basic functionality)
-python test_agi_core.py --quick
+python tests/test_agi_core.py --quick
 
 # Full test suite
-python test_agi_core.py --all
+python tests/test_agi_core.py --all
 
 # Specific tests
-python test_agi_core.py --nlp    # Test NLP modules
-python test_agi_core.py --llm    # Test LLM modules (requires PyTorch)
+python tests/test_agi_core.py --nlp    # Test NLP modules
+python tests/test_agi_core.py --llm    # Test LLM modules (requires PyTorch)
 ```
 
 **Expected Results:**
@@ -450,7 +450,7 @@ agent.integration.set_mood(valence=-0.5, arousal=0.8, dominance=0.2)
 - **Main README**: `agi_core/README.md` - Comprehensive documentation
 - **Module Docs**: Each module has detailed docstrings
 - **Examples**: Built into `agi_core/main.py`
-- **Test Suite**: `test_agi_core.py` - Shows usage examples
+- **Test Suite**: `tests/test_agi_core.py` - Shows usage examples
 
 ---
 

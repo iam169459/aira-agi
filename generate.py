@@ -112,7 +112,7 @@ def main():
         raise SystemExit(
             "Prompt contains characters not in training vocabulary: "
             + repr("".join(unknown))
-            + ". Use a prompt with characters found in data.txt."
+            + ". Use a prompt with characters found in data/data.txt."
         )
 
     model = TinyGPT(len(chars), checkpoint["config"])
