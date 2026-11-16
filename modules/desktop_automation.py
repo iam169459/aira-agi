@@ -2,7 +2,10 @@
 Desktop Automation Module
 Provides mouse and keyboard control
 """
-import keyboard
+try:
+    import keyboard
+except ImportError:
+    keyboard = None  # optional; press_keyboard() will report unavailable
 import time
 import numpy as np
 from typing import Optional, Tuple, List
@@ -68,6 +71,8 @@ class DesktopController:
     
     def press_keyboard(self, key: str, press_duration: float = 0.1):
         """Press and hold a key"""
+        if keyboard is None:
+            raise RuntimeError("'keyboard' package not installed; press_keyboard unavailable")
         keyboard.press(key)
         time.sleep(press_duration)
         keyboard.release(key)

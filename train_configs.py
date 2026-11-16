@@ -9,6 +9,7 @@ This module provides pre-configured training settings for different use cases:
 """
 
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
 
@@ -743,7 +744,7 @@ if __name__ == "__main__":
     elif args.generate:
         config = get_config(args.generate)
         script = generate_training_script(config)
-        print(f"\nGenerated training script for {config.name}:\n")
+        print(f"\nGenerated training script for {config.name}:\n", file=sys.stderr)
         print(script)
     elif args.save:
         config = get_config(args.save)
