@@ -505,6 +505,8 @@ class GirlVoiceAI:
                 # with breathing and natural pauses handled by the TTS module
                 self.girl_tts.speak(text, emotion=emotion, play=True)
                 print(f"\n[35m[1mAira:[0m {text}")
+                return
+            if self.tts:
                 # Use regular TTS with rhythm and breathing
                 if hasattr(self.tts, 'speak_with_rhythm'):
                     audio_path = self.tts.speak_with_rhythm(text, emotion=emotion,
