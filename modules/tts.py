@@ -86,6 +86,7 @@ class TTSModule:
         # Try to initialize pyttsx3, but handle failures gracefully
         self.engine = None
         self._init_successful = False
+        self._render_to_file = None  # wav path when rendering (helpers must not call say())
         
         if use_offline:
             try:
@@ -121,6 +122,34 @@ class TTSModule:
             print("TTS mode: text output only (offline disabled)")
             self._init_successful = False
     
+    def _render_wav(self, text: str, audio_path: str, rate: int = None, volume: float = None):
+        """Render text to a wav file in a fresh subprocess.
+
+        macOS pyttsx3/NSSS corrupts the output of repeated save_to_file() calls
+        on a long-lived in-process engine, so each render runs in its own process.
+        """
+        import subprocess, sys, json
+        rate = rate if rate is not None else max(165, self.rate)
+        volume = volume if volume is not None else self.volume
+        voice_id = None
+        try:
+            if self.engine is not None:
+                voice_id = self.engine.getProperty('voice')
+        except Exception:
+            pass
+        code = (
+            "import pyttsx3, os, sys\n"
+            "e = pyttsx3.init()\n"
+            f"e.setProperty('rate', {int(rate)})\n"
+            f"e.setProperty('volume', {float(volume)})\n"
+            + (f"e.setProperty('voice', {voice_id!r})\n" if voice_id else "")
+            + f"e.save_to_file(sys.argv[1], sys.argv[2])\n"
+            "e.runAndWait()\n"
+        )
+        subprocess.run([sys.executable, "-c", code, text, audio_path],
+                       check=True, capture_output=True)
+        return audio_path
+
     def speak(self, text: str, emotion: str = "neutral") -> Optional[str]:
         """
         Speak text with optional emotion adaptation
@@ -153,9 +182,8 @@ class TTSModule:
                 import tempfile
                 self.temp_dir = tempfile.mkdtemp()
             audio_path = os.path.join(self.temp_dir, f"speech_{hash(text) % 10000}.wav")
-            self.engine.save_to_file(text, audio_path)
-            self.engine.runAndWait()
-            
+            self._render_wav(text, audio_path, rate=modifier["rate"], volume=modifier["volume"])
+
             return audio_path
             
         except Exception as e:
@@ -340,8 +368,9 @@ class TTSModule:
                     self.engine.setProperty('pitch', orig_pitch + breath["pitch"])
                 except:
                     pass
-            self.engine.say("h")
-            self.engine.runAndWait()
+            if self._render_to_file is None:
+                self.engine.say("h")
+                self.engine.runAndWait()
             time.sleep(breath["duration"] * 0.5)
         finally:
             self.engine.setProperty('rate', orig_rate)
@@ -484,8 +513,9 @@ class TTSModule:
                         self.engine.setProperty('pitch', orig_pitch + emphasis_props['pitch_modifier'])
                     except:
                         pass
-                self.engine.say(text)
-                self.engine.runAndWait()
+                if self._render_to_file is None:
+                    self.engine.say(text)
+                    self.engine.runAndWait()
             finally:
                 self.engine.setProperty('rate', orig_rate)
                 self.engine.setProperty('volume', orig_volume)
@@ -495,9 +525,10 @@ class TTSModule:
                     except:
                         pass
         else:
-            self.engine.say(text)
-            self.engine.runAndWait()
-    
+            if self._render_to_file is None:
+                self.engine.say(text)
+                self.engine.runAndWait()
+
     def _add_vocal_fry(self, emotion: str = "neutral"):
         """Add vocal fry (creaky voice) at end of phrases."""
         orig_rate = self.engine.getProperty('rate')
@@ -550,9 +581,11 @@ class TTSModule:
             
             timestamp = int(time.time() * 1000)
             audio_path = os.path.join(self.temp_dir, f"speech_{timestamp}.wav")
-            
+
             if use_rhythm and use_breathing:
-                self._speak_with_rhythm_and_breathing(text, emotion, audio_path)
+                # Render the whole reply to one wav in a fresh subprocess
+                # (repeated save_to_file on one NSSS engine yields empty files).
+                self._render_wav(text, audio_path)
             else:
                 # Standard speech with emotion
                 emotion_modifiers = {
@@ -566,11 +599,8 @@ class TTSModule:
                     "cheerful": {"rate": 180, "volume": 1.0}
                 }
                 modifier = emotion_modifiers.get(emotion, emotion_modifiers["neutral"])
-                self.engine.setProperty('rate', modifier["rate"])
-                self.engine.setProperty('volume', modifier["volume"])
-                self.engine.save_to_file(text, audio_path)
-                self.engine.runAndWait()
-            
+                self._render_wav(text, audio_path, rate=modifier["rate"], volume=modifier["volume"])
+
             return audio_path
         except Exception as e:
             print(f"TTS error: {e}")
@@ -599,26 +629,27 @@ class TTSModule:
             orig_pitch = 100
             pitch_supported = True
         
+        self._render_to_file = audio_path
         try:
             for i, (segment_text, props) in enumerate(segments):
                 if not segment_text.strip():
                     continue
-                
+
                 is_last_segment = (i == total_segments - 1)
                 is_phrase_end = props.get('pause_after', 0) > 0
-                
+
                 # Apply pre-boundary lengthening
                 boundary_props = self._apply_pre_boundary_lengthening(is_phrase_end, is_last_segment)
-                
+
                 rate = self._apply_rhythm_variation(orig_rate, props, emotion, i, total_segments)
                 pitch = self._apply_pitch_variation(orig_pitch, props, emotion, i, total_segments) if pitch_supported else None
                 volume = self._apply_volume_variation(orig_volume, props, emotion)
-                
+
                 # Apply boundary lengthening
                 rate = int(rate * boundary_props['rate_modifier'])
                 if boundary_props['pitch_modifier']:
                     pitch = (pitch or orig_pitch) + boundary_props['pitch_modifier']
-                
+
                 self.engine.setProperty('rate', rate)
                 self.engine.setProperty('volume', volume)
                 if pitch_supported and pitch is not None:
@@ -626,18 +657,15 @@ class TTSModule:
                         self.engine.setProperty('pitch', pitch)
                     except:
                         pass
-                
-                # Speak with word-level emphasis
-                self._speak_with_emphasis(segment_text, emotion, pitch_supported)
-                
+
                 pause_duration = props.get('pause_after', 0)
                 if pause_duration > 0:
                     time.sleep(pause_duration)
-                
+
                 # Add vocal fry at end of declarative sentences
                 if boundary_props.get('vocal_fry', False):
                     self._add_vocal_fry(emotion)
-                
+
                 if props.get('breath', False):
                     self._add_breath(emotion)
         finally:
