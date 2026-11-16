@@ -8,6 +8,13 @@ import tempfile
 import os
 from typing import Optional
 
+# Fix SSL certificate verification for model downloads on macOS (self-signed chain issue)
+try:
+    import certifi
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+except ImportError:
+    pass
+
 
 class STTModule:
     """Speech-to-Text using Whisper"""
