@@ -48,11 +48,6 @@ class TinyGPTModel(nn.Module):
         
         # Dropout
         self.dropout = nn.Dropout(dropout)
-        
-        # Causal mask
-        self.register_buffer(
-            "mask", torch.tril(torch.ones(block_size, block_size))
-        )
     
     def _create_block(self, n_embd: int, n_head: int, block_size: int, dropout: float) -> nn.Module:
         """Create a transformer block"""
@@ -64,7 +59,10 @@ class TinyGPTModel(nn.Module):
                 self.key = nn.Linear(n_embd, head_size, bias=False)
                 self.query = nn.Linear(n_embd, head_size, bias=False)
                 self.value = nn.Linear(n_embd, head_size, bias=False)
-                
+                self.register_buffer(
+                    "mask", torch.tril(torch.ones(block_size, block_size))
+                )
+
             def forward(self, x):
                 _, t, _ = x.shape
                 k, q, v = self.key(x), self.query(x), self.value(x)
