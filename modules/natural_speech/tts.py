@@ -94,19 +94,26 @@ class TextToSpeech:
     """From-scratch synthesizer with a young-female-style default voice."""
 
     def __init__(self, sample_rate=22050, f0=185.0, f0_range=0.20,
-                 rate=1.0, breathiness=0.018, voice=None):
+                 rate=1.0, breathiness=None, voice=None):
         self.sample_rate = sample_rate
         self.rate = max(0.5, min(2.0, rate))
-        self.synth = FormantSynthesizer(sample_rate=sample_rate, base_f0=f0,
-                                        f0_range=f0_range,
-                                        breathiness=breathiness)
-        self.speed_factor = 1.0 + (150.0 - 165.0) / 165.0
         self.voice_names = {
-            "female": {"f0": 190.0},
-            "male": {"f0": 115.0},
-            "child": {"f0": 250.0},
-            "neutral": {"f0": 150.0},
+            "female": {"f0": 185.0, "oq": 0.62, "breathiness": 0.022,
+                        "tilt": 1400.0},
+            "male": {"f0": 110.0, "oq": 0.52, "breathiness": 0.010,
+                     "tilt": 900.0},
+            "child": {"f0": 250.0, "oq": 0.68, "breathiness": 0.030,
+                      "tilt": 1800.0},
+            "neutral": {"f0": 150.0, "oq": 0.58, "breathiness": 0.016,
+                        "tilt": 1100.0},
         }
+        preset = self.voice_names.get(voice,
+                                      self.voice_names["female"])
+        self.synth = FormantSynthesizer(
+            sample_rate=sample_rate, base_f0=f0, f0_range=f0_range,
+            breathiness=breathiness if breathiness is not None
+            else preset["breathiness"],
+            open_quotient=preset["oq"], tilt=preset["tilt"])
         if voice and voice in self.voice_names:
             self.synth.base_f0 = self.voice_names[voice]["f0"]
 
@@ -131,6 +138,13 @@ class TextToSpeech:
 
         stress_flags = self._mark_stress(phonemes)
 
+        # Micro-prosody: deterministic per-word pitch drift so repeated words
+        # and runs do not sound metronomic.
+        seed = sum((i + 1) * (ord(c) + 3) for i, c in enumerate(text))
+        drift_rng = np.random.default_rng(seed)
+        word_pitch = [1.0 + drift_rng.uniform(-0.025, 0.025)
+                      for _ in range(max(len(phonemes), 1))]
+
         events = []
         t = 0.0
         vowel_positions = [i for i, p in enumerate(phonemes)
@@ -138,7 +152,24 @@ class TextToSpeech:
         n_voiced = max(1, len(vowel_positions))
         voiced_seen = 0
 
+        vowel_groups = ("vowel", "diphthong")
+        last_vowel = None
+        in_word = False
+        word_idx = -1
+        for idx, p in enumerate(phonemes):
+            if p in PAUSES:
+                in_word = False
+                continue
+            if not in_word:
+                word_idx += 1
+                in_word = True
+            if ph.phone_group(p) in vowel_groups:
+                last_vowel = idx
+        n_words_total = word_idx + 1
+
         end_pitch_drop = 1.0 - 0.12 * f0_span * 5
+        word_idx = -1
+        in_word = False
         for idx, p in enumerate(phonemes):
             if p in PAUSES:
                 dur = PAUSES[p] / speed
@@ -155,6 +186,7 @@ class TextToSpeech:
                                    "f0_start": base_f0, "f0_end": base_f0,
                                    "amp": 0.0})
                     t += dur
+                in_word = False
                 continue
             group = ph.phone_group(p)
             if group in ("stop",):
@@ -170,15 +202,22 @@ class TextToSpeech:
                     dur *= 1.25
                 elif group in ("vowel", "diphthong"):
                     dur *= 0.82
-            amp = 0.95 if stress_flags[idx] else 0.78
+                if idx == last_vowel:
+                    dur *= 1.12
+            amp = 0.92 if stress_flags[idx] else 0.82
 
+            if not in_word:
+                word_idx += 1
+                in_word = True
+            wf0 = word_pitch[word_idx % len(word_pitch)] if word_idx >= 0 \
+                else 1.0
             if p in ph.VOWEL_GROUP:
                 voiced_seen += 1
                 decl = 1.0 - 0.14 * (voiced_seen / n_voiced)
                 accent = 1.05 if stress_flags[idx] else 0.98
-                f0 = base_f0 * decl * accent
+                f0 = base_f0 * decl * accent * wf0
             else:
-                f0 = base_f0 * 0.99
+                f0 = base_f0 * 0.99 * wf0
             f0_start = f0
             f0_end = f0 * (0.995 if group in ("vowel", "diphthong") else 1.0)
 

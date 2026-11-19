@@ -118,13 +118,14 @@ def test_stt():
         print(f"    {w:>7} -> {got!r}")
     check("roundtrip 6/6", ok == 6, f"{ok}/6")
 
-    clear_multi = tts.speak_to_tempfile("open close")
-    res = rec.transcribe(clear_multi)
-    os.unlink(clear_multi)
-    check("multi-word 'open close'", res["text"] == "open close",
-          f"got {res['text']!r}")
-    # Known gap: tightly coarticulated pairs ("yes stop") can drop the
-    # second word when its DTW half-cost exceeds unknown_threshold.
+    for phrase in ("open close", "yes stop"):
+        p = tts.speak_to_tempfile(phrase)
+        res = rec.transcribe(p)
+        os.unlink(p)
+        check(f"multi-word '{phrase}'", res["text"] == phrase,
+              f"got {res['text']!r}")
+    # Known gap: very long coarticulated chains (4+ words spoken run
+    # together) can still drop one middle word in greedy DTW splitting.
 
     unk = tts.speak_to_tempfile("banana")
     res = rec.transcribe(unk)

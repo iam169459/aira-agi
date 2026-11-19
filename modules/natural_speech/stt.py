@@ -32,7 +32,7 @@ DEFAULT_VOCABULARY = [
 
 class SpeechRecognizer:
     def __init__(self, vocabulary=None, sample_rate=16000,
-                 unknown_threshold=0.70, margin_ratio=0.82,
+                 unknown_threshold=0.82, margin_ratio=0.82,
                  n_cepstra=19, template_tts=None):
         self.sample_rate = sample_rate
         self.unknown_threshold = unknown_threshold
@@ -48,7 +48,9 @@ class SpeechRecognizer:
     # ------------------------------------------------------------ templates
     def build_vocabulary(self, words):
         """Synthesize reference features for each vocabulary word with the
-        built-in TTS (no external model data involved)."""
+        built-in TTS (no external model data involved). Variants cover
+        speaking rate, pitch, tempo warps, and light additive noise so
+        recognition tolerates natural delivery variation."""
         for word in words:
             word = word.lower().strip()
             if not word or word in self.templates:
@@ -70,11 +72,36 @@ class SpeechRecognizer:
                     if rate == 1.0 and pitch == 1.0:
                         self._template_durations[word] = \
                             len(audio16) / self.sample_rate
+                        variants.append(self._time_warp(ceps, 0.85))
+                        variants.append(self._time_warp(ceps, 1.18))
+                        for speed in (0.85, 1.176):
+                            idx = np.arange(0.0, len(audio16), speed)
+                            tape = np.interp(idx, np.arange(len(audio16)),
+                                             audio16)
+                            tape_ceps, _ = self.extractor.extract(tape)
+                            variants.append(tape_ceps)
+                    if rate == 1.0:
+                        rng = np.random.default_rng(
+                            len(ceps) + len(word) * 131)
+                        noisy = audio16 + rng.normal(
+                            0.0, 0.08 * float(np.abs(audio16).max() + 1e-9),
+                            len(audio16))
+                        noisy_ceps, _ = self.extractor.extract(noisy)
+                        variants.append(noisy_ceps)
             self.tts.rate = base_rate
             self.tts.synth.base_f0 = base_f0
             if variants:
                 self.templates[word] = variants
         self._update_feature_scale()
+
+    def _time_warp(self, cepstra, factor):
+        """Feature-domain time stretch of a template (tempo variation)."""
+        n_in = len(cepstra)
+        idx = np.linspace(0, n_in - 1, max(4, int(round(n_in * factor))))
+        out = np.empty((len(idx), cepstra.shape[1]), dtype=cepstra.dtype)
+        for c in range(cepstra.shape[1]):
+            out[:, c] = np.interp(idx, np.arange(n_in), cepstra[:, c])
+        return out
 
     def _update_feature_scale(self):
         pooled = np.vstack([t if isinstance(t, np.ndarray) else np.vstack(t)
@@ -186,22 +213,21 @@ class SpeechRecognizer:
 
     # ------------------------------------------------------------ internals
     def _word_segments(self, energy):
-        """Split frame energies into word segments using energy valleys."""
-        peak = np.percentile(energy, 95)
-        floor = np.percentile(energy, 10)
+        """Split frame energies into word segments using energy valleys.
+
+        Energy is smoothed and gate gaps are bridged liberally: intra-word
+        stop closures must not split a word (multi-word runs are separated
+        later by the recursive DTW splitter, not the VAD)."""
+        kernel = np.ones(5) / 5.0
+        smooth = np.convolve(energy, kernel, mode="same")
+        peak = np.percentile(smooth, 95)
+        floor = np.percentile(smooth, 10)
         if peak - floor < 1e-6:
             return []
         thr = floor + 0.15 * (peak - floor)
-        voiced = energy > thr
+        voiced = smooth > thr
 
-        utterances = self._runs(voiced, min_len=5, min_gap=4)
-        segments = []
-        max_word_frames = self._max_template_frames() * 1.45
-        for (a, b) in utterances:
-            parts = self._recursive_split(energy, a, b, thr,
-                                          max_word_frames)
-            segments.extend(parts)
-        return segments
+        return self._runs(voiced, min_len=5, min_gap=12)
 
     @staticmethod
     def _runs(mask, min_len=5, min_gap=3):
@@ -223,8 +249,9 @@ class SpeechRecognizer:
 
     @staticmethod
     def _trim_edges(energy, a, b, rel=0.0):
-        """Trim low-energy frames at the edges of a segment."""
-        if b - a < 8:
+        """Trim low-energy frames at the edges of a segment (rel <= 0: keep
+        everything; soft onsets like /h/ and /s/ carry distinctive cues)."""
+        if rel <= 0.0 or b - a < 8:
             return int(a), int(b)
         seg = energy[a:b]
         peak = float(np.percentile(seg, 95))
@@ -239,57 +266,6 @@ class SpeechRecognizer:
         while hi > lo + 4 and seg[hi - 1] < cut:
             hi -= 1
         return int(a + lo), int(a + hi)
-
-    def _max_template_frames(self):
-        if not self._template_durations:
-            return 20
-        max_dur = max(self._template_durations.values())
-        return max(8, max_dur * self.sample_rate / self.extractor.hop)
-
-    def _recursive_split(self, energy, a, b, thr, max_frames,
-                         depth=0):
-        length = b - a
-        if length <= 0:
-            return []
-        if length <= max_frames or depth >= 3:
-            return [(a, b)]
-        mid_lo = a + int(length * 0.25)
-        mid_hi = a + int(length * 0.75)
-        window = energy[mid_lo:mid_hi]
-        if len(window) < 4:
-            return [(a, b)]
-        valley = mid_lo + int(np.argmin(window))
-        k = max(1, int(round(length / max(1.0, max_frames * 0.62))))
-        if k <= 1:
-            return [(a, b)]
-        cuts = []
-        for j in range(1, k):
-            target = a + int(length * j / k)
-            search_lo = target - int(length * 0.15)
-            search_hi = target + int(length * 0.15)
-            search_lo = max(a + 2, search_lo)
-            search_hi = min(b - 2, search_hi)
-            if search_hi <= search_lo:
-                cuts.append(target)
-                continue
-            sub = energy[search_lo:search_hi]
-            cuts.append(search_lo + int(np.argmin(sub)))
-        if energy[valley] < thr:
-            cuts = sorted(set([valley] + [c for c in cuts
-                                          if abs(c - valley) > 4]))
-        cuts = sorted({max(a + 2, min(b - 2, c)) for c in cuts})
-        bounds = [a] + cuts + [b]
-        parts = []
-        for i in range(len(bounds) - 1):
-            lo, hi = bounds[i], bounds[i + 1]
-            if hi - lo < 3:
-                continue
-            if hi - lo > max_frames * 1.2:
-                parts.extend(self._recursive_split(energy, lo, hi, thr,
-                                                   max_frames, depth + 1))
-            else:
-                parts.append((lo, hi))
-        return parts
 
     def _match(self, seg_feats):
         results = []

@@ -31,14 +31,26 @@ modules/natural_speech/
    irregular words, digraph handling, magic-e vowels, voiced/voiceless plural
    (`cats` → S) and `-ed` logic, and word stress marking. Output is an
    ARPAbet-style phoneme string with inter-word breath markers.
-3. **Prosody** (`tts.py`) — per-phoneme base durations, sentence-medial
-   F0 declination, `?`/`!` contours, pause insertion at sentence and comma
-   boundaries.
-4. **Synthesis** (`synth.py`) — a parallel source-filter formant synthesizer.
-   Voiced frames use a glottal pulse train (±2% jitter) driving an analytic
-   resonator bank (`exp(-π·bw·t)·sin(2πf·t)` impulse responses, evaluated
-   vectorized); unvoiced frames use FFT band-passed white noise. Formants
-   glide between phonemes over ~28 ms transitions.
+3. **Prosody** (`tts.py`) — per-phoneme base durations with stress
+   lengthening and **phrase-final vowel lengthening**, sentence-medial F0
+   declination plus deterministic **per-word pitch drift** (no two words are
+   ever at exactly the same pitch, so speech never sounds metronomic),
+   `?`/`!` contours, pause insertion.
+4. **Synthesis** (`synth.py`) — a parallel source-filter formant synthesizer
+   tuned for natural voice quality:
+   - Voiced excitation is a **Rosenberg-style glottal flow-derivative pulse**
+     (not an impulse train), with cycle-to-cycle jitter (±2.2%) and shimmer
+     (+/−7% amplitude) — the same micro-perturbations real larynxes have.
+   - **Aspiration (breath) noise is keyed to the glottal open phase**, so it
+     breathes with the voice instead of hissing underneath it.
+   - Formants are damped-sinusoid resonator banks convolved with the
+     excitation, overlap-adding their decay tails across time-varying
+     segments; formant targets move through **3-step interpolated glides**
+     (~40 ms) between phones, avoiding the steppy "robot portamento" of
+     hard switches. A gentle spectral tilt (~1/f) completes the source.
+   - Unvoiced frames use FFT band-passed white noise.
+   - Each voice preset carries its own F0, **open quotient** (male 0.52,
+     female 0.62, child 0.68), breathiness, and tilt.
 
 ### API
 
@@ -86,12 +98,17 @@ needs no external corpora.
    per-utterance mean/variance normalization. Frame energy is used only by the
    VAD, keeping matching robust to loudness differences.
 3. **Matching** (`dtw.py`) — banded DTW (Sakoe-Chiba) with cosine frame
-   distance over all 6 rate/pitch template variants per word (rates 0.85 / 1.0
-   / 1.2 × pitches 1.0 / 1.12). Cost is normalized to [0, 2].
-4. **Decoding** — long segments are recursively split 2-way at the point of
-   minimum total DTW cost, yielding multi-word transcriptions. Words above
-   `unknown_threshold` (default 0.70) are rejected as `<unk>` and excluded
+   distance over **12 self-augmented template variants per word**: 3 TTS
+   speaking rates (0.85 / 1.0 / 1.2) × 2 pitches (1.0 / 1.12), plus
+   feature-domain tempo warps (0.85× / 1.18×), tape-speed variants, and
+   noise-mixed variants — all derived from the engine's own TTS output, so no
+   external data is involved. Cost is normalized to [0, 2].
+4. **Decoding** — multi-word runs are recursively split 2-way at the point
+   whose left+right DTW costs beat matching the whole segment. Words above
+   `unknown_threshold` (default 0.82) are rejected as `<unk>` and excluded
    from the output text — that is how out-of-vocabulary words are rejected.
+   The VAD smooths energy and bridges intra-word stop closures so words are
+   never chopped at internal consonant closures.
 
 ### API
 
@@ -135,20 +152,23 @@ recognized correctly once enrolled.
 
 ## Verified behavior & honest limitations
 
-Verified by `python tests/test_natural_speech.py` (41 checks, all passing):
-single-word roundtrip 6/6, multi-word utterances with clear word breaks
-("open close", "open time"), OOV rejection ("banana", "zebra", "computer",
-"elephant" → empty), silence handling, 10% noise and 0.85× tempo robustness,
-cross-voice recognition after enrollment, WAV I/O, G2P and normalization.
+Verified by `python tests/test_natural_speech.py` (all checks passing) plus
+a 23-case recognition matrix: 7/7 single-word roundtrip, 2-word utterances
+("yes stop", "hello yes", "open close", "open time", "no time stop"),
+3-word chains ("no time stop"), OOV rejection ("banana", "zebra",
+"computer", "elephant" → empty), silence handling, 10% additive noise
+(→ recovered), 0.85×/1.15× tempo robustness, cross-voice recognition after
+enrollment, WAV I/O, G2P and normalization.
 
 Limitations by design (this is a from-scratch, zero-data engine):
 
 - **Vocabulary-based**: only enrolled/listed words can be recognized. Open
   transcription of arbitrary sentences needs pretrained models and is out of
   scope for a no-template, no-API engine.
-- **Connected speech**: tightly coarticulated word pairs ("yes stop" run
-  together) may occasionally yield a sub-sequence; words with clearer
-  boundaries or slightly spaced dictation transcribe reliably.
+- **Connected speech**: very long coarticulated chains (4+ words spoken run
+  together, e.g. "hello yes stop time") can still drop one middle word in
+  greedy DTW splitting; words with clearer boundaries or slightly spaced
+  dictation transcribe reliably.
 - **Cross-voice**: enroll once per main speaker for best accuracy.
 - **Microphone input**: requires `pyaudio`; transcribing files/arrays has no
   extra dependencies beyond NumPy.

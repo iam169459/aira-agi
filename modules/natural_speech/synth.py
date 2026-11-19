@@ -1,30 +1,35 @@
 """Source-filter formant synthesizer, from scratch.
 
-Voiced sounds: a glottal pulse train (with jitter) is passed through a
-parallel bank of damped-sinusoid resonators whose center frequencies are the
-phoneme's formants. The parallel resonator response is evaluated analytically,
-so no per-sample Python recursion is needed and synthesis is fast.
+Voiced sounds: a shaped glottal flow-derivative waveform (Rosenberg-style
+pulse with cycle-to-cycle jitter and shimmer) plus aspiration noise keyed to
+the glottal open phase drives a bank of damped-sinusoid resonators. Each
+time-varying formant segment filters its slice of the excitation by
+convolving with the resonators' analytic impulse responses and overlap-adding
+the decay tails, so formant targets move smoothly between phones without any
+per-sample Python recursion.
 
 Unvoiced sounds: shaped white noise (FFT band-pass) driven by a fricative /
 burst / aspiration spec.
-
-Piecewise-constant formant control points with short glide segments handle
-transitions between phones.
 """
 import numpy as np
 
 from . import phonemes as ph
 
+FORMANT_GAINS = (1.0, 0.52, 0.24)
+
 
 class FormantSynthesizer:
     def __init__(self, sample_rate=22050, base_f0=185.0, f0_range=0.18,
-                 breathiness=0.018):
+                 breathiness=0.018, open_quotient=0.60, tilt=1200.0):
         self.sr = sample_rate
         self.base_f0 = base_f0
         self.f0_range = f0_range
         self.breathiness = breathiness
-        self.transition_ms = 28.0
-        self.ramp_ms = 6.0
+        self.open_quotient = open_quotient
+        self.tilt = tilt
+        self.transition_ms = 40.0
+        self.ramp_ms = 7.0
+        self._kernel_cache = {}
 
     # ------------------------------------------------------------------
     def synthesize(self, events):
@@ -36,62 +41,93 @@ class FormantSynthesizer:
         n_total = int(total * self.sr)
         audio = np.zeros(n_total, dtype=np.float64)
 
-        pulses = self._pulse_train(events, n_total)
-        segments = self._formant_schedule(events)
+        src, open_env = self._glottal_source(events, n_total)
+        env = self._event_envelope(events, n_total)
+        nseed = np.random.default_rng(20240517)
+        breath = (nseed.uniform(-1, 1, n_total) * open_env *
+                  self.breathiness * 3.0)
 
-        for seg in segments:
-            s0 = int(seg["start"] * self.sr)
-            s1 = s0 + max(1, int(seg["dur"] * self.sr))
-            if seg["voiced"]:
-                audio[s0:s1] += self._render_voiced(seg, pulses)
-            if seg["noise"] is not None:
-                audio[s0:s1] += self._render_noise(seg)
+        segments = self._formant_schedule(events)
+        audio = self._render_all(segments, src, breath, env, n_total)
         audio = self._finish(audio)
         return audio.astype(np.float32)
 
+    def _render_all(self, segments, src, breath, env, n_total):
+        audio = np.zeros(n_total)
+        for seg in segments:
+            s0 = int(seg["start"] * self.sr)
+            s1 = min(s0 + max(1, int(seg["dur"] * self.sr)), n_total)
+            if s1 <= s0:
+                continue
+            if seg["voiced"] and seg["formants"] is not None:
+                self._render_voiced(seg, s0, s1, src, breath, env, audio)
+            if seg["noise"] is not None:
+                audio[s0:s1] += self._render_noise(seg)
+        return audio
+
     # ------------------------------------------------------------------
-    def _pulse_train(self, events, n_total):
-        """Glottal pulse positions and amplitudes with slight jitter."""
-        pulse_t = []
-        pulse_amp = []
+    def _glottal_source(self, events, n_total):
+        """Shaped glottal flow derivative with jitter/shimmer, plus a per-
+        sample envelope of glottal openness used to gate aspiration noise."""
+        src = np.zeros(n_total)
+        open_env = np.full(n_total, 0.10)
         for e in events:
             if not self._event_voiced(e):
                 continue
             s0 = int(e["start"] * self.sr)
             n = max(1, int(e["dur"] * self.sr))
-            f0a = e["f0_start"]
-            f0b = e["f0_end"]
-            amp = e["amp"]
+            f0a, f0b, amp = e["f0_start"], e["f0_end"], e["amp"]
             rng = np.random.default_rng(int(s0) + 7919)
             tloc = 0.0
             guard = 0
-            while tloc < n and guard < 100000:
+            while tloc < n and guard < 200000:
                 guard += 1
-                frac = tloc / max(n, 1)
+                frac = min(tloc / max(n, 1), 1.0)
                 f0 = f0a + (f0b - f0a) * frac
-                period = self.sr / max(f0, 40.0)
-                jitter = 1.0 + rng.uniform(-0.02, 0.02)
+                jitter = 1.0 + rng.uniform(-0.022, 0.022)
+                T0 = self.sr / max(f0, 40.0) * jitter
                 pos = s0 + int(round(tloc))
-                if pos < n_total:
-                    a = amp * (0.94 + 0.06 * rng.uniform())
-                    pulse_t.append(pos)
-                    pulse_amp.append(a)
-                tloc += period * jitter
-        if not pulse_t:
-            return (np.zeros(0, dtype=np.int64),
-                    np.zeros(0, dtype=np.float64))
-        pulse_t = np.array(pulse_t, dtype=np.int64)
-        pulse_amp = np.array(pulse_amp, dtype=np.float64)
-        order = np.argsort(pulse_t)
-        return pulse_t[order], pulse_amp[order]
+                if pos >= n_total:
+                    break
+                olen = min(max(2, int(T0 * self.open_quotient)),
+                           n_total - pos)
+                tau = np.arange(olen) / max(olen - 1, 1)
+                shape = (6.0 * tau - 6.0 * tau * tau) / 1.5
+                shimmer = amp * (0.93 + 0.14 * rng.uniform())
+                src[pos:pos + olen] += shape * shimmer
+                open_env[pos:pos + olen] = 1.0
+                tloc += T0
+        return src, open_env
 
     @staticmethod
     def _event_voiced(e):
         return e["ph"] in ph.VOICED
 
+    def _event_envelope(self, events, n_total):
+        """Per-event half-cosine amplitude gesture applied at the glottis."""
+        env = np.zeros(n_total)
+        r = max(1, int(self.ramp_ms / 1000.0 * self.sr))
+        for e in events:
+            if e["amp"] <= 0.0:
+                continue
+            s0 = int(e["start"] * self.sr)
+            n = max(1, int(e["dur"] * self.sr))
+            s1 = min(s0 + n, n_total)
+            if s1 <= s0:
+                continue
+            ramp = min(r, (s1 - s0) // 2)
+            gesture = np.ones(s1 - s0)
+            if ramp > 0:
+                edge = 0.5 - 0.5 * np.cos(np.pi * np.arange(ramp) / ramp)
+                gesture[:ramp] = edge
+                gesture[-ramp:] = edge[::-1]
+            np.maximum(env[s0:s1], gesture, out=env[s0:s1])
+        return env
+
     # ------------------------------------------------------------------
     def _formant_schedule(self, events):
-        """Build piecewise-constant formant control segments from events."""
+        """Build formant control segments from events, with smooth multi-step
+        glide ramps between consecutive voiced targets."""
         segments = []
         prev_formants = None
         for e in events:
@@ -164,7 +200,8 @@ class FormantSynthesizer:
 
     def _voiced_piecewise(self, e, prev_formants, points):
         """points: [(frac, formants), ...]: fraction of duration at which the
-        formants reach that value. Emits a lead glide plus steady pieces."""
+        formants reach that value. Emits a multi-step glide plus steady
+        pieces."""
         segs = []
         dur = e["dur"]
         start = e["start"]
@@ -174,9 +211,8 @@ class FormantSynthesizer:
 
         lead = self.transition_ms / 1000.0
         if prev_formants is not None and lead < dur * 0.5:
-            mid = [(prev_formants["f"][k] + vals[0][k]) / 2.0 for k in range(3)]
-            segs.append(self._make_seg(start, 0.0, lead, mid,
-                                       self._default_bw(), e))
+            segs.extend(self._glide_steps(start, lead, prev_formants["f"],
+                                          vals[0], e))
             cursor = lead
         for idx in range(len(points)):
             end = fracs[idx] * dur
@@ -196,15 +232,25 @@ class FormantSynthesizer:
         cursor = 0.0
         lead = self.transition_ms / 1000.0
         if prev_formants is not None and lead < dur * 0.6:
-            mid = [(prev_formants["f"][k] + formants["f"][k]) / 2.0
-                   for k in range(3)]
-            segs.append(self._make_seg(start, 0.0, lead, mid,
-                                       formants["bw"], e))
+            segs.extend(self._glide_steps(start, lead, prev_formants["f"],
+                                          formants["f"], e))
             cursor = lead
         segs.append(self._make_seg(start, cursor, dur - cursor,
                                    formants["f"], formants["bw"], e))
         for s in segs:
             s["noise"] = noise
+        return segs
+
+    def _glide_steps(self, start, lead, from_f, to_f, event, steps=3):
+        """Interpolated formant ramp broken into short pieces so formant
+        motion sounds continuous instead of steppy."""
+        segs = []
+        step_dur = lead / steps
+        for i in range(steps):
+            mid = (i + 0.5) / steps
+            f = [from_f[k] + (to_f[k] - from_f[k]) * mid for k in range(3)]
+            segs.append(self._make_seg(start, i * step_dur, step_dur, f,
+                                       self._default_bw(), event))
         return segs
 
     def _default_bw(self):
@@ -233,37 +279,31 @@ class FormantSynthesizer:
         }
 
     # ------------------------------------------------------------------
-    def _render_voiced(self, seg, pulses):
-        p_t, p_a = pulses
-        s0 = int(seg["start"] * self.sr)
-        s1 = s0 + max(1, int(seg["dur"] * self.sr))
-        if len(p_t) == 0:
-            return np.zeros(s1 - s0)
-        lo_idx = np.searchsorted(p_t, int((seg["start"] - 0.25) * self.sr))
-        hi_idx = np.searchsorted(p_t, s1)
-        if lo_idx >= hi_idx:
-            return np.zeros(s1 - s0)
-        pt = p_t[lo_idx:hi_idx].astype(np.float64)
-        pa = p_a[lo_idx:hi_idx]
-        n = np.arange(s0, s1, dtype=np.float64)[:, None] - pt[None, :]
-        mask = n >= 0
-        n = np.where(mask, n / self.sr, 0.0)
-
-        out = np.zeros(s1 - s0)
+    def _render_voiced(self, seg, s0, s1, src, breath, env, audio):
+        exc = (src[s0:s1] + breath[s0:s1]) * env[s0:s1] * seg["amp"]
+        if not len(exc):
+            return
         f = seg["formants"]["f"]
         bw = seg["formants"]["bw"]
-        gains = [1.0, 0.55, 0.28]
-        for k in range(3):
-            resp = (np.exp(-np.pi * bw[k] * n) *
-                    np.sin(2 * np.pi * f[k] * n) * gains[k])
-            contrib = np.where(mask, resp * pa[None, :], 0.0).sum(axis=1)
-            out += contrib
-        env = self._amp_envelope(s1 - s0)
-        rng = np.random.default_rng(s0 * 17 + 3)
-        breath = rng.uniform(-1, 1, s1 - s0) * self.breathiness
-        out += breath * env
-        out *= env
-        return out
+        convs = [np.convolve(exc, self._kernel(f[k], bw[k]))
+                 for k in range(3)]
+        out = np.zeros(max(len(c) for c in convs))
+        for k, c in enumerate(convs):
+            out[:len(c)] += c * FORMANT_GAINS[k]
+        end = min(s0 + len(out), len(audio))
+        audio[s0:end] += out[:end - s0]
+
+    def _kernel(self, f, bw):
+        key = (round(f, 1), round(bw, 1))
+        cached = self._kernel_cache.get(key)
+        if cached is not None:
+            return cached
+        t_end = np.log(500.0) / (np.pi * max(bw, 30.0))
+        n = max(int(t_end * self.sr), 2)
+        t = np.arange(n) / self.sr
+        kern = np.exp(-np.pi * bw * t) * np.sin(2 * np.pi * f * t)
+        self._kernel_cache[key] = kern
+        return kern
 
     def _render_noise(self, seg):
         spec = seg["noise"]["spec"]
@@ -296,7 +336,8 @@ class FormantSynthesizer:
                 if asp_n > 0:
                     asp = self._fft_bandpass(
                         noise[burst_n:burst_n + asp_n], 1200, 1800) * 0.20
-                    out[burst_n:burst_n + asp_n] += asp
+                    out[burst_n:burst_n + asp_n] += \
+                        asp * env[burst_n:burst_n + asp_n]
             return out * env
         return noise * 0.1 * env
 
@@ -318,13 +359,19 @@ class FormantSynthesizer:
         ramp = min(int(self.ramp_ms / 1000.0 * self.sr), n_samples // 2)
         env = np.ones(n_samples)
         if ramp > 0:
-            env[:ramp] = np.linspace(0.0, 1.0, ramp)
-            env[-ramp:] = np.linspace(1.0, 0.0, ramp)
+            edge = 0.5 - 0.5 * np.cos(np.pi * np.arange(ramp) / ramp)
+            env[:ramp] = edge
+            env[-ramp:] = edge[::-1]
         return env
 
     # ------------------------------------------------------------------
     def _finish(self, audio):
         audio = audio - np.mean(audio)
+        if self.tilt > 0 and len(audio) > 64:
+            spec = np.fft.rfft(audio)
+            freqs = np.fft.rfftfreq(len(audio), 1.0 / self.sr)
+            tilt = 1.0 / np.sqrt(1.0 + (freqs / self.tilt) ** 2)
+            audio = np.fft.irfft(spec * tilt, len(audio))
         peak = np.max(np.abs(audio)) if len(audio) else 0.0
         if peak > 0:
             audio = audio / peak * 0.92
