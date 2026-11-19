@@ -3,7 +3,20 @@ Text-to-Speech Module
 Uses pyttsx3 for offline TTS with emotion adaptation and natural rhythm/breathing
 Human-like features: fillers, non-verbal sounds, emphasis, self-corrections, vocal fry
 """
-import pyttsx3
+try:
+    import pyttsx3
+    PYTTSX3_AVAILABLE = True
+except ImportError:
+    pyttsx3 = None
+    PYTTSX3_AVAILABLE = False
+
+try:
+    from .natural_speech import TextToSpeech as _NaturalTTS
+    NATURAL_SPEECH_AVAILABLE = True
+except ImportError:
+    _NaturalTTS = None
+    NATURAL_SPEECH_AVAILABLE = False
+
 import numpy as np
 import tempfile
 import os
@@ -87,6 +100,15 @@ class TTSModule:
         self.engine = None
         self._init_successful = False
         self._render_to_file = None  # wav path when rendering (helpers must not call say())
+        self.natural = None
+        if not PYTTSX3_AVAILABLE and NATURAL_SPEECH_AVAILABLE:
+            try:
+                self.natural = _NaturalTTS(rate=max(0.75, min(1.5, rate / 165.0)))
+                self.engine = None
+                self._init_successful = True
+                print("pyttsx3 unavailable; using built-in from-scratch formant TTS (natural_speech)")
+            except Exception as e:
+                print(f"natural_speech TTS initialization failed: {e}")
         
         if use_offline:
             try:
@@ -119,8 +141,9 @@ class TTSModule:
                 self.engine = None
                 self._init_successful = False
         else:
-            print("TTS mode: text output only (offline disabled)")
-            self._init_successful = False
+            if self.natural is None:
+                print("TTS mode: text output only (offline disabled)")
+                self._init_successful = False
     
     def _render_wav(self, text: str, audio_path: str, rate: int = None, volume: float = None):
         """Render text to a wav file in a fresh subprocess.
@@ -131,6 +154,10 @@ class TTSModule:
         import subprocess, sys, json
         rate = rate if rate is not None else max(165, self.rate)
         volume = volume if volume is not None else self.volume
+        if self.engine is None and self.natural is not None:
+            self.natural.rate = max(0.75, min(1.5, rate / 165.0))
+            self.natural.synthesize_to_file(text, audio_path)
+            return audio_path
         voice_id = None
         try:
             if self.engine is not None:
@@ -155,6 +182,19 @@ class TTSModule:
         Speak text with optional emotion adaptation
         Returns path to saved audio file, or None if TTS not available
         """
+        if self.engine is None and self.natural is not None and self._init_successful:
+            if not hasattr(self, 'temp_dir'):
+                import tempfile
+                self.temp_dir = tempfile.mkdtemp()
+            audio_path = os.path.join(self.temp_dir, f"speech_{hash(text) % 10000}.wav")
+            emotion_rates = {"happy": 1.06, "sad": 0.88, "angry": 1.12,
+                             "excited": 1.15, "calm": 0.94, "flirty": 1.0,
+                             "cheerful": 1.09, "neutral": 1.0}
+            self.natural.rate = max(0.75, min(1.5, (self.rate / 165.0) *
+                                             emotion_rates.get(emotion, 1.0)))
+            self.natural.synthesize_to_file(text, audio_path, emotion)
+            return audio_path
+        
         if self.engine is None or not self._init_successful:
             # Print text instead of speaking
             print(f"[Aira]: {text} (emotion: {emotion})")
@@ -571,6 +611,14 @@ class TTSModule:
             use_rhythm: Enable natural rhythm variation
             use_breathing: Enable breathing pauses
         """
+        if self.engine is None and self.natural is not None and self._init_successful:
+            if not hasattr(self, 'temp_dir'):
+                self.temp_dir = tempfile.mkdtemp()
+            timestamp = int(time.time() * 1000)
+            audio_path = os.path.join(self.temp_dir, f"speech_{timestamp}.wav")
+            self._render_wav(text, audio_path)
+            return audio_path
+        
         if self.engine is None or not self._init_successful:
             print(f"[Aira]: {text} (emotion: {emotion})")
             return None

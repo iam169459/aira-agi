@@ -73,7 +73,7 @@ Aira implements all of these capabilities in an integrated, lightweight, and ful
 
 | Feature | Description | Status |
 |---------|-------------|--------|
-| **Voice I/O** | OpenAI Whisper for speech-to-text (STT) and pyttsx3 for text-to-speech (TTS) | ✅ |
+| **Voice I/O** | Whisper/pyttsx3 with an automatic from-scratch fallback engine: formant-synthesis TTS + MFCC/DTW speech recognition (no external APIs or models) | ✅ |
 | **Screen Perception** | OpenCV-based screen capture and content analysis | ✅ |
 | **Desktop Automation** | Mouse/keyboard control with PyAutoGUI, pynput, and comprehensive safety guards | ✅ |
 | **Self-Healing Code** | Automatic error detection, analysis, and repair suggestions | ✅ |
@@ -148,8 +148,15 @@ aira-agi/
 ├── modules/                     # Utility Modules
 │   ├── __init__.py
 │   ├── emotion.py               # Emotion feature extraction
-│   ├── stt.py                   # Speech-to-text (Whisper)
-│   ├── tts.py                   # Text-to-speech (pyttsx3)
+│   ├── stt.py                   # Speech-to-text (Whisper, w/ natural fallback)
+│   ├── tts.py                   # Text-to-speech (pyttsx3, w/ natural fallback)
+│   ├── natural_speech/          # From-scratch voice engine — see docs/NATURAL_SPEECH.md
+│   │   ├── normalize.py         #   text normalization
+│   │   ├── g2p.py               #   grapheme-to-phoneme
+│   │   ├── phonemes.py          #   phoneme tables
+│   │   ├── tts.py + synth.py    #   formant-synthesis TTS
+│   │   ├── features.py + dtw.py #   MFCC + DTW matching
+│   │   └── stt.py               #   vocabulary STT with self-enrollment
 │   ├── screen_perception.py     # Screen capture & analysis
 │   ├── desktop_automation.py    # Desktop control with safety
 │   └── self_healing.py          # Self-healing code system
@@ -606,6 +613,25 @@ print(chain.get_conclusion())
 | `modules/screen_perception.py` | Screen capture and OCR |
 | `modules/desktop_automation.py` | Safe desktop control |
 | `modules/self_healing.py` | Automatic error repair |
+
+---
+
+## Natural Speech Engine (from-scratch voice)
+
+Aira ships with a **fully from-scratch voice engine** that requires no external
+speech APIs, pretrained models, or downloaded data — just NumPy. It provides:
+
+- **Text-to-Speech** from first principles: text normalization → rule-based
+  grapheme-to-phoneme → prosody → parallel formant (source-filter) synthesis.
+  Four voices (female/male/child/neutral), emotion-aware rates, WAV I/O.
+- **Speech-to-Text** without pretrained models: energy VAD → MFCC features →
+  banded DTW template matching against templates synthesized by the engine's
+  own TTS, with recursive multi-word splitting, unknown-word rejection, and
+  per-user enrollment.
+
+Both are wired in as automatic fallbacks for `modules/tts.py` and
+`modules/stt.py`, so voice mode works even without Whisper/pyttsx3 installed.
+See [docs/NATURAL_SPEECH.md](docs/NATURAL_SPEECH.md) for the full guide.
 
 ---
 
