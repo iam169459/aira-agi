@@ -175,6 +175,28 @@ Limitations by design (this is a from-scratch, zero-data engine):
 
 ---
 
+## Performance
+
+Measured on this codebase (NumPy only, single CPU core):
+
+- **TTS** ~60x realtime (a 4 s sentence renders in ~70 ms). A bounded phrase
+  cache makes repeated phrases (~0.1 ms) and emotion re-renders effectively
+  free; cache keys include rate/voice parameters so retuning re-renders.
+- **STT** single words ~50-90 ms, two-word utterances ~0.5-0.6 s, even 5-word
+  run-together chains ~1.1 s — i.e. real-time. Three optimizations made this
+  possible without changing results:
+  1. the banded DTW is **fully vectorized** and provably exact (the
+     sequential "left step" chain is resolved by binary min-plus jumps over
+     per-row prefix costs; verified equal to the reference DP on 80 random
+     cases including narrow bands);
+  2. `_match` pre-ranks the vocabulary with a time-normalized sketch
+     (cheap matmul) and runs full-resolution DTW only on top candidates;
+  3. the multi-word split scan ranks candidate boundaries with one
+     canonical subsampled template per word, then **re-verifies the winning
+     split at full resolution** before accepting it.
+
+---
+
 ## Testing
 
 ```bash

@@ -41,8 +41,14 @@ class SpeechRecognizer:
                                        n_cepstra=n_cepstra)
         self.tts = template_tts or TextToSpeech()
         self.templates = {}
+        self.fast_templates = {}
         self._template_durations = {}
         self._feat_scale = np.ones(self.extractor.n_cepstra)
+        self.candidate_words = 6
+        self._template_version = 0
+        self._sketches = {}
+        self._sketches_matrix = None
+        self._sketches_words = None
         self.build_vocabulary(vocabulary or DEFAULT_VOCABULARY)
 
     # ------------------------------------------------------------ templates
@@ -92,6 +98,7 @@ class SpeechRecognizer:
             self.tts.synth.base_f0 = base_f0
             if variants:
                 self.templates[word] = variants
+                self.fast_templates[word] = variants[0][::2]
         self._update_feature_scale()
 
     def _time_warp(self, cepstra, factor):
@@ -120,6 +127,8 @@ class SpeechRecognizer:
             samples = resample(samples, sample_rate, self.sample_rate)
         ceps, _ = self.extractor.extract(samples)
         self.templates.setdefault(word, [])
+        self.fast_templates[word] = ceps[::2]
+        self._template_version = -1
         if isinstance(self.templates[word], list):
             self.templates[word].append(self._prep(ceps))
         else:
@@ -267,10 +276,52 @@ class SpeechRecognizer:
             hi -= 1
         return int(a + lo), int(a + hi)
 
-    def _match(self, seg_feats):
-        results = []
+    def _sketch(self, cepstra, frames=12):
+        """Coarse time-normalized contour of a segment for cheap pre-ranking."""
+        n_in = len(cepstra)
+        idx = np.linspace(0, n_in - 1, frames)
+        out = np.empty((frames, cepstra.shape[1]), dtype=np.float64)
+        for c in range(cepstra.shape[1]):
+            out[:, c] = np.interp(idx, np.arange(n_in), cepstra[:, c])
+        return out.ravel()
+
+    def _rebuild_sketches(self):
+        words = []
+        rows = []
         for word, tpl in self.templates.items():
             tpls = tpl if isinstance(tpl, list) else [tpl]
+            for t in tpls:
+                sk = self._sketch(t)
+                sk /= max(float(np.linalg.norm(sk)), 1e-9)
+                rows.append(sk)
+                words.append(word)
+        self._sketches_matrix = (np.vstack(rows) if rows
+                                 else np.zeros((0, 1)))
+        self._sketches_words = words
+        self._template_version = len(words)
+
+    def _match(self, seg_feats):
+        if self._template_version != self._count_templates():
+            self._rebuild_sketches()
+        results = []
+        n_words = len(self.templates)
+        if not n_words:
+            return None, INF, INF
+        if n_words <= self.candidate_words:
+            shortlist = list(self.templates.keys())
+        else:
+            q = self._sketch(seg_feats)
+            q /= max(float(np.linalg.norm(q)), 1e-9)
+            sims = self._sketches_matrix @ q
+            word_best = {}
+            for word, sim in zip(self._sketches_words, sims):
+                if word not in word_best or sim > word_best[word]:
+                    word_best[word] = sim
+            ordered = sorted(word_best, key=word_best.get, reverse=True)
+            shortlist = ordered[:self.candidate_words]
+        for word in shortlist:
+            tpls = self.templates[word]
+            tpls = tpls if isinstance(tpls, list) else [tpls]
             best = INF
             for t in tpls:
                 band = max(30, abs(len(seg_feats) - len(t)) + 12)
@@ -283,6 +334,27 @@ class SpeechRecognizer:
         best_word, best_cost = results[0]
         second = results[1][1] if len(results) > 1 else INF
         return best_word, best_cost, second
+
+    def _match_fast(self, seg_feats):
+        """Cheap candidate ranking for the split scan: one canonical
+        subsampled template per word; winners are re-verified at full
+        resolution before acceptance."""
+        results = []
+        for word, t in self.fast_templates.items():
+            band = max(30, abs(len(seg_feats) - len(t)) + 12)
+            results.append((word, dtw_cost(seg_feats, t, band=band)))
+        results.sort(key=lambda x: x[1])
+        if not results:
+            return None, INF, INF
+        best_word, best_cost = results[0]
+        second = results[1][1] if len(results) > 1 else INF
+        return best_word, best_cost, second
+
+    def _count_templates(self):
+        total = 0
+        for tpl in self.templates.values():
+            total += len(tpl) if isinstance(tpl, list) else 1
+        return total
 
     def _template_frames(self, word):
         dur = self._template_durations.get(word, 0.30)
@@ -309,15 +381,20 @@ class SpeechRecognizer:
         for p in range(lo, hi + 1, 2):
             if p - a < 4 or b - p < 4:
                 continue
-            lw, lc, _ = self._match(self._prep(feats[a:p]))
-            rw, rc, _ = self._match(self._prep(feats[p:b]))
+            lw, lc, _ = self._match_fast(self._prep(feats[a:p])[::2])
+            rw, rc, _ = self._match_fast(self._prep(feats[p:b])[::2])
             if lw is None or rw is None:
                 continue
             total = lc + rc
             if best_split is None or total < best_split[0]:
-                best_split = (total, p, lw, lc, rw, rc)
+                best_split = (total, p)
         if best_split is not None and best_split[0] / 2.0 < cost * 0.97:
             p = best_split[1]
+            lw, lc, _ = self._match(self._prep(feats[a:p]))
+            rw, rc, _ = self._match(self._prep(feats[p:b]))
+            if (lw is None or rw is None or
+                    (lc + rc) / 2.0 >= cost * 0.97):
+                return [(a, b, word, cost, second)]
             return (self._decode(feats, energy, a, p, depth + 1) +
                     self._decode(feats, energy, p, b, depth + 1))
         return [(a, b, word, cost, second)]

@@ -116,6 +116,8 @@ class TextToSpeech:
             open_quotient=preset["oq"], tilt=preset["tilt"])
         if voice and voice in self.voice_names:
             self.synth.base_f0 = self.voice_names[voice]["f0"]
+        self._phrase_cache = {}
+        self._phrase_cache_max = 128
 
     # ------------------------------------------------------------------
     def phonemes(self, text):
@@ -288,10 +290,22 @@ class TextToSpeech:
 
     # ------------------------------------------------------------------
     def synthesize(self, text, emotion="neutral"):
+        key = (text, emotion, round(self.rate, 4),
+               round(self.synth.base_f0, 2), self.synth.open_quotient,
+               self.synth.breathiness, self.synth.tilt,
+               round(self.synth.transition_ms, 3),
+               round(self.synth.ramp_ms, 3))
+        cached = self._phrase_cache.get(key)
+        if cached is not None:
+            return cached.copy()
         events = self.plan(text, emotion)
         if not events:
             return np.zeros(0, dtype=np.float32)
-        return self.synth.synthesize(events)
+        audio = self.synth.synthesize(events)
+        if len(self._phrase_cache) >= self._phrase_cache_max:
+            self._phrase_cache.pop(next(iter(self._phrase_cache)))
+        self._phrase_cache[key] = audio
+        return audio.copy()
 
     def synthesize_to_file(self, text, path, emotion="neutral"):
         audio = self.synthesize(text, emotion)
