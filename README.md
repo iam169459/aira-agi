@@ -24,6 +24,7 @@
 - [Testing](#testing)
 - [Project Structure](#project-structure)
 - [Components Deep Dive](#components-deep-dive)
+- [Cybersecurity Tools](#cybersecurity-tools-defensive--authorized-target)
 - [Privacy & Security](#privacy--security)
 - [Performance](#performance)
 - [Troubleshooting](#troubleshooting)
@@ -160,11 +161,21 @@ aira-agi/
 │   │   └── stt.py               #   vocabulary STT with self-enrollment
 │   ├── screen_perception.py     # Screen capture & analysis
 │   ├── desktop_automation.py    # Desktop control with safety
-│   └── self_healing.py          # Self-healing code system
+│   ├── self_healing.py          # Self-healing code system
+│   └── cyber_tools/             # Cybersecurity toolkit — see docs/CYBER_TOOLS.md
+│       ├── guard.py             #   authorization gate for active scans
+│       ├── hashing.py           #   digests, hash ID, password strength, baselines
+│       ├── crypto.py            #   SHA-256-CTR + HMAC encryption, PBKDF2
+│       ├── portscan.py          #   concurrent TCP scan with banners
+│       ├── webaudit.py          #   HTTP security-header audit, TLS expiry
+│       ├── logscan.py           #   IOC extraction, brute-force detection
+│       ├── recon.py             #   DNS lookup, reverse DNS, subdomain sweep
+│       └── clitool.py           #   python -m modules.cyber_tools.clitool
 │
 ├── tests/                       # Test suites (pytest-compatible)
 │   ├── test_natural_speech.py   #   TTS/STT engine roundtrip & DTW invariants
 │   ├── test_transformer.py      #   fused attention, KV cache, legacy remap
+│   ├── test_cyber_tools.py      #   hashes, crypto, scanners, guard, log parsing
 │   └── test_agi_core.py         #   AGI core components
 │
 ├── purple_ai/                   # Purple AI Framework
@@ -558,6 +569,7 @@ Or run each suite standalone (also works under pytest):
 ```bash
 python tests/test_natural_speech.py   # TTS/STT engine: roundtrips, DTW, WAV I/O
 python tests/test_transformer.py      # fused attention, KV cache, legacy remap
+python tests/test_cyber_tools.py      # hashes, crypto, scanners, guard, logs
 python tests/test_agi_core.py         # AGI core components
 ```
 
@@ -566,6 +578,12 @@ python tests/test_agi_core.py         # AGI core components
 The test suites cover:
 - **Natural speech engine** — text normalization, G2P, TTS→STT word roundtrips,
   multi-word decoding, OOV rejection, enrollment, WAV I/O, phrase cache, DTW invariants
+- **Cybersecurity toolkit** — digest known-answer vectors, hash ID, password
+  strength, integrity baselines, crypto roundtrip + tamper rejection, loopback
+  port scan, brute-force/IOC log parsing, live local HTTP header audit
+- **Transformer** — fused QKV vs per-head equivalence, KV-cached vs recomputed
+  generation, fallback past `block_size`, legacy checkpoint remap, emotion conditioning,
+  training loss; generation benchmark (informational)
 - **Transformer** — fused QKV vs per-head equivalence, KV-cached vs recomputed
   generation, fallback past `block_size`, legacy checkpoint remap, emotion conditioning,
   training loss; generation benchmark (informational)
@@ -613,6 +631,7 @@ print(chain.get_conclusion())
 | `modules/screen_perception.py` | Screen capture and OCR |
 | `modules/desktop_automation.py` | Safe desktop control |
 | `modules/self_healing.py` | Automatic error repair |
+| `modules/cyber_tools/` | Cybersecurity toolkit (defensive + authorized-target) — see docs/CYBER_TOOLS.md |
 
 ---
 
@@ -636,6 +655,35 @@ candidate prefilter and split re-verification (~50–90 ms per word on CPU), and
 the TTS keeps a bounded phrase cache. See
 [docs/NATURAL_SPEECH.md](docs/NATURAL_SPEECH.md) for the full guide and
 performance numbers.
+
+---
+
+## Cybersecurity Tools (defensive + authorized-target)
+
+Aira includes a stdlib-only cybersecurity toolkit (`modules/cyber_tools/`)
+spanning defensive auditing and authorized-target testing. Every active tool
+(port scan, web audit, subdomain sweep) **refuses public targets** unless you
+pass `authorized=True` — loopback and private networks always work.
+
+```python
+from modules.cyber_tools import password_strength, encrypt, decrypt, scan_ports
+
+password_strength("hunter2")                  # score, entropy, patterns
+key, salt, _ = derive_key("my long passphrase")
+decrypt(key, encrypt(key, "secret"))          # auth-tagged from-scratch crypto
+scan_ports("localhost", ports="quick")        # TCP scan w/ service names
+```
+
+```bash
+python -m modules.cyber_tools.clitool scan 127.0.0.1 --preset quick
+python -m modules.cyber_tools.clitool audit http://localhost:8080
+```
+
+Tools included: digests & HMAC, hash-family identification, password strength
+generator, file-integrity baselines, SHA-256-CTR + HMAC-SHA256 encryption with
+PBKDF2, concurrent port scanner, HTTP security-header audit, TLS expiry,
+brute-force/IOC log analysis, and DNS recon. Full guide:
+[docs/CYBER_TOOLS.md](docs/CYBER_TOOLS.md).
 
 ---
 
