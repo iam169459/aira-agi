@@ -86,9 +86,11 @@ Aira implements all of these capabilities in an integrated, lightweight, and ful
 |---------|-------------|--------|
 | **From-Scratch GPT** | Custom decoder-only transformer implementation in PyTorch | ✅ |
 | **Character-Level Tokenization** | Simple, efficient tokenization for training and generation | ✅ |
-| **Multi-Head Attention** | Scaled dot-product attention with causal masking | ✅ |
+| **Multi-Head Attention** | Scaled dot-product attention with causal masking, fused into a single QKV projection | ✅ |
+| **KV-Cache Generation** | Incremental decoding with a per-layer key/value cache (~4.4× faster than full recomputation) | ✅ |
+| **Emotion Conditioning** | `EmotionAwareGPT` shifts generation by an 8-class emotion embedding | ✅ |
 | **Configurable Architecture** | Adjustable layers, heads, embedding dimension, and context size | ✅ |
-| **Checkpoint Management** | Save and load model weights with full configuration | ✅ |
+| **Checkpoint Compatibility** | Legacy per-head checkpoints remap to the fused layout on load | ✅ |
 
 ---
 
@@ -141,9 +143,8 @@ aira-agi/
 │       └── transformer_integration.py
 │
 ├── ai_core/                     # Multi-Modal AI Core
-│   ├── __init__.py
-│   ├── main.py                  # Emotion-aware AI assistant
-│   └── model.py                 # EmotionAwareGPT model
+│   ├── main.py                  # Emotion-aware AI assistant (lazy model init)
+│   └── model.py                 # EmotionAwareGPT model (shared by train/generate)
 │
 ├── modules/                     # Utility Modules
 │   ├── __init__.py
@@ -155,11 +156,16 @@ aira-agi/
 │   │   ├── g2p.py               #   grapheme-to-phoneme
 │   │   ├── phonemes.py          #   phoneme tables
 │   │   ├── tts.py + synth.py    #   formant-synthesis TTS
-│   │   ├── features.py + dtw.py #   MFCC + DTW matching
+│   │   ├── features.py + dtw.py #   MFCC + vectorized DTW matching
 │   │   └── stt.py               #   vocabulary STT with self-enrollment
 │   ├── screen_perception.py     # Screen capture & analysis
 │   ├── desktop_automation.py    # Desktop control with safety
 │   └── self_healing.py          # Self-healing code system
+│
+├── tests/                       # Test suites (pytest-compatible)
+│   ├── test_natural_speech.py   #   TTS/STT engine roundtrip & DTW invariants
+│   ├── test_transformer.py      #   fused attention, KV cache, legacy remap
+│   └── test_agi_core.py         #   AGI core components
 │
 ├── purple_ai/                   # Purple AI Framework
 │   ├── __init__.py
@@ -544,33 +550,27 @@ agent = AGIAgent(
 ### Run All Tests
 
 ```bash
+python -m pytest tests/ -q
+```
+
+Or run each suite standalone (also works under pytest):
+
+```bash
+python tests/test_natural_speech.py   # TTS/STT engine: roundtrips, DTW, WAV I/O
+python tests/test_transformer.py      # fused attention, KV cache, legacy remap
+python tests/test_agi_core.py         # AGI core components
 ```
 
 ### Test Output
 
-The test suite covers:
-- AGI Agent initialization
-- Conversation system
-- Reasoning engine
-- Memory system (STM/LTM/Episodic)
-- Learning system
-- Planning system
-- Decision making
-- State management
-
-Expected output:
-```
-======================================================================
-  AGI Core Comprehensive Test Suite
-======================================================================
-...
-   ✅ PASS: AGI Agent initialization
-   ✅ PASS: Conversation
-   ✅ PASS: Reasoning engine
-   ...
-   Total: 1/1 test suites passed
-   Time: X.XX seconds
-```
+The test suites cover:
+- **Natural speech engine** — text normalization, G2P, TTS→STT word roundtrips,
+  multi-word decoding, OOV rejection, enrollment, WAV I/O, phrase cache, DTW invariants
+- **Transformer** — fused QKV vs per-head equivalence, KV-cached vs recomputed
+  generation, fallback past `block_size`, legacy checkpoint remap, emotion conditioning,
+  training loss; generation benchmark (informational)
+- **AGI core components** — agent initialization, conversation, reasoning, memory,
+  planning, state (requires `agi_core` dependencies)
 
 ### Manual Testing
 
@@ -631,7 +631,11 @@ speech APIs, pretrained models, or downloaded data — just NumPy. It provides:
 
 Both are wired in as automatic fallbacks for `modules/tts.py` and
 `modules/stt.py`, so voice mode works even without Whisper/pyttsx3 installed.
-See [docs/NATURAL_SPEECH.md](docs/NATURAL_SPEECH.md) for the full guide.
+It is fast, too: word recognition uses a fully vectorized banded DTW with a
+candidate prefilter and split re-verification (~50–90 ms per word on CPU), and
+the TTS keeps a bounded phrase cache. See
+[docs/NATURAL_SPEECH.md](docs/NATURAL_SPEECH.md) for the full guide and
+performance numbers.
 
 ---
 
