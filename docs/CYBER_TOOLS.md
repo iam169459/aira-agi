@@ -58,6 +58,7 @@ assertion that you own or have permission to test those targets.
 | `sentinel.py` | Continuous watch: file-tamper checksums, rogue-listener drift (`/proc/net/tcp`), brute-force surges → breach events |
 | `engagement.py` | **Attack + repair in one pass**: `run_engagement` chains recon → port scan → wall integrity → fingerprint → dir probe → cipher audit → web probes → repair plan |
 | `fingerprint.py` | Professional enumeration: web-stack fingerprinting (server/powered-by/cookies/generator), restrained dirb-style directory probing, service banner + version-age analysis (outdated OpenSSH/Apache/PHP…), TLS cipher-suite audit (weak/medium/strong classes) |
+| `knowledge.py` | **Hacking knowledge base** — 16 technique records (SQLi, XSS, TLS downgrade, exposure, IDOR, SSRF…): what each class is, how to detect it non-destructively with the toolkit, and how to fix it. `technique_lookup("sql")`, `technique_show("T-TLS")`, the 5-phase `METHODOLOGY` behind engagements, and `suggest_for_finding(kind)` |
 | `reporting.py` | **Professional pentest deliverables**: severity-ranked findings register (critical→info), executive summary, risk rating, remediation plan, raw-output appendix — rendered as Markdown or HTML via `build_report` + `save_report` |
 
 ## What is deliberately NOT included

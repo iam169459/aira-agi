@@ -162,12 +162,15 @@ aira-agi/
 │   │   ├── tts.py + synth.py    #   formant-synthesis TTS
 │   │   ├── features.py + dtw.py #   MFCC + vectorized DTW matching
 │   │   └── stt.py               #   vocabulary STT with self-enrollment
+│   ├── dev_tools/               # Developer skills — see docs/DEV_SKILLS.md
+│   │   └── codeaudit.py + clitool.py  # static code audit, dep hygiene, report
 │   ├── screen_perception.py     # Screen capture & analysis
 │   ├── desktop_automation.py    # Desktop control with safety
 │   ├── self_healing.py          # Self-healing code system
 │   └── cyber_tools/             # Cybersecurity toolkit — see docs/CYBER_TOOLS.md
 │       ├── guard.py             #   authorization gate for active scans
 │       ├── consent.py           #   consent profiles: pre-approved own targets
+│       ├── knowledge.py         #   hacking knowledge base + assessment methodology
 │       ├── hashing.py           #   digests, hash ID, password strength, baselines
 │       ├── crypto.py            #   SHA-256-CTR + HMAC encryption, PBKDF2
 │       ├── portscan.py          #   concurrent TCP scan with banners
@@ -194,11 +197,13 @@ aira-agi/
 │   ├── test_agi_power.py        #   sampling, agent brain, daemon
 │   ├── test_agi_integration.py  #   unified brain wiring, memory persistence
 │   ├── test_beast_mode.py       #   consent profiles, persona, emotion prosody
+│   ├── test_dev_skills.py       #   code audit, depscan, hacking knowledge
 │   └── ...
 │
 ├── docs/                        # Guides & examples
 │   ├── NATURAL_SPEECH.md        #   from-scratch TTS/STT engine guide
 │   ├── CYBER_TOOLS.md           #   cybersecurity toolkit guide
+│   ├── DEV_SKILLS.md            #   developer-skills (code audit) guide
 │   ├── EXAMPLE_PENTEST_REPORT.md #  sample severity-ranked pentest report
 │   └── AGI_IMPLEMENTATION.md    #   AGI architecture & training notes
 │
@@ -738,6 +743,32 @@ Deliberately excluded: DoS/DDoS/flooding, exploit payloads, exfiltration —
 indiscriminate attack tools with no authorized-testing value. Every active
 tool still requires `authorized=True` (or a covering consent profile) for
 non-local targets. Full guide: [docs/CYBER_TOOLS.md](docs/CYBER_TOOLS.md).
+
+**Hacking knowledge base** (`knowledge.py`): every technique Aira knows —
+SQLi, XSS, TLS downgrade, service exposure, IDOR, SSRF, secrets-in-code… —
+comes as a record: what it is, how to detect it non-destructively with the
+toolkit, and how to fix it, plus the 5-phase methodology behind
+`run_engagement` (recon → enumerate → wall assessment → active probing →
+report + repair):
+
+```python
+from modules.cyber_tools import technique_lookup, technique_show
+
+for tech in technique_lookup("sql"):
+    print(tech["id"], tech["severity"], tech["owasp"])
+print(technique_show("T-SQLI")["detect"])
+```
+
+**Developer skills** (`modules/dev_tools/`, separate package): Aira can
+audit her own codebase — hardcoded secrets, `eval`/`shell=True`, weak
+hashes, SQL string building, unpinned/known-vulnerable dependencies, and
+import hygiene — each finding with a concrete fix, optionally compiled
+into a Markdown report. Full guide: [docs/DEV_SKILLS.md](docs/DEV_SKILLS.md).
+
+```bash
+python -m modules.dev_tools.clitool audit .
+python -m modules.dev_tools.clitool report . --out dev_report.md
+```
 
 ---
 

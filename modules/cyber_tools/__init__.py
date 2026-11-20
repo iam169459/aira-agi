@@ -9,6 +9,9 @@ you control.
 """
 from .guard import require_authorization, guard
 from .consent import ConsentStore, target_covered
+from .knowledge import (TECHNIQUES, METHODOLOGY, lookup as technique_lookup,
+                        show as technique_show,
+                        suggest_for_finding)
 from .hashing import (digest_bytes, digest_file, hash_identifier,
                       password_strength, hmac_digest, baseline_build,
                       baseline_verify)
@@ -30,10 +33,12 @@ from .fingerprint import (fingerprint_http, dir_probe, service_banner,
 from .reporting import (build_report, collect_findings, render_markdown,
                         render_html, save_report, SEVERITY_ORDER)
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 
 __all__ = [
     "require_authorization", "guard", "ConsentStore", "target_covered",
+    "TECHNIQUES", "METHODOLOGY", "technique_lookup", "technique_show",
+    "suggest_for_finding",
     "digest_bytes", "digest_file", "hash_identifier", "password_strength",
     "hmac_digest", "baseline_build", "baseline_verify",
     "derive_key", "encrypt", "decrypt",
