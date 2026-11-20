@@ -18,6 +18,14 @@ except ImportError:
     MoodState = None
     SafeModeGuard = None
 
+# Transformer brain: the trained EmotionAwareGPT behind generic conversation
+try:
+    from ai_core.agent import AiraAgent
+    BRAIN_AVAILABLE = True
+except ImportError:
+    BRAIN_AVAILABLE = False
+    AiraAgent = None
+
 # Import from AGI Core
 from ..reasoning import ReasoningEngine, ThoughtChain
 from ..memory import MemorySystem
@@ -73,6 +81,14 @@ class AGIIntegration:
             self.ultra_advanced = UltraAdvancedAira()
         except Exception:
             self.ultra_advanced = None
+        
+        # Transformer brain (model-backed generation; None without checkpoint)
+        self.brain = None
+        if BRAIN_AVAILABLE:
+            try:
+                self.brain = AiraAgent()
+            except Exception:
+                self.brain = None
         
         # Initialize Purple AI components
         self.purple_agent = None
@@ -363,6 +379,14 @@ class AGIIntegration:
         elif intent_type == 'information_request':
             base = self._provide_information(user_input)
         else:
+            brain_text = None
+            if self.brain is not None and self.brain.powered_by_model:
+                try:
+                    brain_text = self.brain.think(user_input, emotion=emotion)
+                except Exception:
+                    brain_text = None
+            if brain_text:
+                return f"{mood_prefix}{brain_text}"
             if len(user_input.split()) > 6:
                 base = "Ooh interesting~ Let me process this... I think I can help break this down for ya! Want me to explain it step by step?"
             else:

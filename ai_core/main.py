@@ -19,6 +19,7 @@ from modules.tts import TTSModule
 from modules.screen_perception import ScreenCapture, ContentAnalyzer, PerceptionState
 from modules.desktop_automation import DesktopController, SafeModeGuard
 from modules.self_healing import SelfHealingCode, ErrorInfo
+from ai_core.agent import AiraAgent
 import torch
 
 
@@ -69,6 +70,7 @@ class EmotionAwareAI:
             "dropout": 0.1
         }
         self._model = None
+        self._brain = None
         
         print("AI system ready!")
     
@@ -96,21 +98,13 @@ class EmotionAwareAI:
             emotion_logits, mood = self.emotion_extractor.extract_mfcc(
                 torch.randn(16000)  # placeholder
             )
-            # In real implementation, use actual audio
-            emotion_name = 'neutral'
+            # In a real implementation, use actual audio features here
+            detected_emotion = self.mood_state.update(emotion_logits, mood)
             confidence = 0.5
         except Exception as e:
-            emotion_name = 'neutral'
+            detected_emotion = 'neutral'
             confidence = 0.5
             print(f"Emotion detection error: {e}")
-        
-        # Update mood state
-        if 'mood' in dir():
-            detected_emotion = self.mood_state.update(
-                emotion_logits, mood
-            )
-        else:
-            detected_emotion = emotion_name
         
         return {
             'text': text,
@@ -121,40 +115,22 @@ class EmotionAwareAI:
             'confidence': confidence
         }
     
+    @property
+    def brain(self) -> AiraAgent:
+        """Lazily created conversation brain (model-backed when a
+        checkpoint exists, template voice otherwise)"""
+        if self._brain is None:
+            self._brain = AiraAgent()
+        return self._brain
+    
     def generate_response(self, user_text: str, mood: str) -> str:
-        """Generate AI response based on input and mood"""
-        # In a real implementation, this would use the EmotionAwareGPT model
-        # For now, use template-based response with mood adaptation
-        
-        mood_responses = {
-            "stressed": "I can hear you're feeling stressed. Take a deep breath. How can I help?",
-            "angry": "I sense your frustration. Let me help you with that. What seems to be the problem?",
-            "excited": "Wow, you sound excited! Tell me more about what's got you so pumped!",
-            "happy": "That's great to hear! What's making you so happy?",
-            "calm": "I can sense you're in a calm state. How can I assist you today?",
-            "neutral": "I'm listening. What's on your mind?",
-            "tired": "You sound tired. Maybe you should rest. Is there anything I can help with before you go?",
-            "sad": "I'm sorry you're feeling down. I'm here if you want to talk or need help with anything."
-        }
-        
-        # Get base response for mood
-        base_response = mood_responses.get(mood, mood_responses["neutral"])
-        
-        # Adapt based on user text content
-        response = base_response
-        
-        # Simple keyword-based adaptation
-        user_lower = user_text.lower()
-        if any(word in user_lower for word in ['help', 'assist', 'support']):
-            if mood in ["stressed", "angry", "sad"]:
-                response = "I'm here to help you. What specifically do you need assistance with?"
-            else:
-                response = "I'd be happy to help you with that! What do you need?"
-        
-        if any(word in user_lower for word in ['thank', 'thanks']):
-            response = "You're welcome! Is there anything else I can help you with?"
-        
-        return response
+        """Generate an AI response through the shared conversation brain.
+
+        Model-backed generation when a ``train.py`` checkpoint exists,
+        mood-aware template voice otherwise — one source of truth with
+        ``ai_core.agent.AiraAgent``.
+        """
+        return self.brain.think(user_text, emotion=mood)
     
     def perceive_screen(self) -> Dict[str, Any]:
         """Capture and analyze screen content"""

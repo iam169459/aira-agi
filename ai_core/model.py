@@ -8,6 +8,42 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 
+def sampling_probs(logits, recent, temperature=0.8, top_k=None, top_p=1.0,
+                   repetition_penalty=1.0):
+    """Turn raw next-token logits into a sampling distribution.
+
+    Applies temperature, repetition penalty (over the token ids in
+    `recent`), top-k truncation, and nucleus (top-p) filtering — in
+    that order. With the defaults (top_k=None, top_p=1.0,
+    repetition_penalty=1.0) this is exactly softmax(logits / temperature).
+    """
+    logits = logits / max(temperature, 1e-5)
+    if repetition_penalty and repetition_penalty != 1.0 and recent:
+        tokens = sorted(set(recent))
+        index = torch.tensor(tokens, dtype=torch.long,
+                             device=logits.device)
+        index = index.view(1, -1).expand(logits.size(0), -1)
+        vals = torch.gather(logits, -1, index)
+        penalized = torch.where(vals > 0, vals / repetition_penalty,
+                                vals * repetition_penalty)
+        logits = logits.scatter(-1, index, penalized)
+    if top_k is not None and 0 < top_k < logits.size(-1):
+        kth = torch.topk(logits, top_k, dim=-1).values[..., -1:]
+        logits = logits.masked_fill(logits < kth, float("-inf"))
+    if top_p is not None and top_p < 1.0:
+        sorted_logits, sorted_idx = torch.sort(logits, descending=True,
+                                               dim=-1)
+        sorted_probs = F.softmax(sorted_logits, dim=-1)
+        cumulative = torch.cumsum(sorted_probs, dim=-1)
+        remove = cumulative > top_p
+        remove[..., 1:] = remove[..., :-1].clone()
+        remove[..., 0] = False
+        sorted_logits = sorted_logits.masked_fill(remove, float("-inf"))
+        logits = torch.full_like(logits, float("-inf")).scatter(
+            -1, sorted_idx, sorted_logits)
+    return F.softmax(logits, dim=-1)
+
+
 class MultiHeadAttention(nn.Module):
     """Causal multi-head attention with a single fused QKV projection."""
 
@@ -139,19 +175,24 @@ class EmotionAwareGPT(nn.Module):
         return self.head(self.ln(x))
 
     @torch.no_grad()
-    def generate(self, idx, count, temperature=0.8, emotion_id=None):
+    def generate(self, idx, count, temperature=0.8, emotion_id=None,
+                 top_k=None, top_p=1.0, repetition_penalty=1.0):
         self.eval()
         idx = idx.clone()
         if 0 < idx.size(1) + count <= self.block_size:
-            return self._generate_cached(idx, count, temperature, emotion_id)
+            return self._generate_cached(idx, count, temperature,
+                                         emotion_id, top_k, top_p,
+                                         repetition_penalty)
         for _ in range(count):
             logits = self(idx[:, -self.block_size:], emotion_id)[:, -1, :]
-            probs = F.softmax(logits / max(temperature, 1e-5), dim=-1)
+            probs = sampling_probs(logits, idx[0].tolist(), temperature,
+                                   top_k, top_p, repetition_penalty)
             idx = torch.cat([idx, torch.multinomial(probs, 1)], dim=1)
         return idx
 
     @torch.no_grad()
-    def _generate_cached(self, idx, count, temperature, emotion_id):
+    def _generate_cached(self, idx, count, temperature, emotion_id,
+                         top_k=None, top_p=1.0, repetition_penalty=1.0):
         """Incremental decoding with a per-layer KV cache.
 
         Exact for idx.size(1) + count <= block_size: positions never wrap,
@@ -180,7 +221,8 @@ class EmotionAwareGPT(nn.Module):
             logits = self._logits_with_caches(
                 x, caches, masked
             )[:, -1, :]
-            probs = F.softmax(logits / max(temperature, 1e-5), dim=-1)
+            probs = sampling_probs(logits, idx[0].tolist(), temperature,
+                                   top_k, top_p, repetition_penalty)
             idx = torch.cat([idx, torch.multinomial(probs, 1)], dim=1)
         return idx
 

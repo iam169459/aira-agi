@@ -17,6 +17,15 @@ class PurpleAgent:
         self.voice.mood = self.mood
         self.perception = EmotionPerception()
         self.mood_path = mood_path or "purple_mood.json"
+        self._agent = None
+
+    @property
+    def agent(self):
+        """Lazily shared conversation brain (ai_core.agent.AiraAgent)."""
+        if self._agent is None:
+            from ai_core.agent import AiraAgent
+            self._agent = AiraAgent()
+        return self._agent
 
     def observe_audio(self, audio_path: str) -> None:
         """Parse audio emotion and update persistent mood."""
@@ -31,9 +40,8 @@ class PurpleAgent:
         print(f"[Mood updated] {self.mood.describe()}")
 
     def respond(self, prompt: str) -> str:
-        """Generate adaptive response based on current mood."""
+        """Generate adaptive response: real brain output styled by mood."""
         emotion = self.mood.emotion
-        # Adaptive response styling based on current mood
         tone_words = {
             "calm": "calmly",
             "happy": "cheerfully",
@@ -44,9 +52,11 @@ class PurpleAgent:
             "sad": "softly",
         }
         tone = tone_words.get(emotion, "thoughtfully")
-        # In future integration: connect to core model for actual text generation
-        response_text = f"(Response in a {tone} tone, emotion: {emotion}) {prompt}"
-        return response_text
+        try:
+            response_text = self.agent.think(prompt, emotion=emotion)
+        except Exception:
+            response_text = prompt
+        return f"(in a {tone} tone) {response_text}"
 
     def self_check(self, source_path: str) -> list:
         with open(source_path, "r", encoding="utf-8") as fh:
