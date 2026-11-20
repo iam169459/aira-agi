@@ -302,7 +302,8 @@ def test_reporting():
     check("markdown has title + summary", "# Penetration Test Report"
           in md and "## Executive summary" in md)
     check("markdown tables severities", "CRITICAL 1" in md)
-    check("markdown evidence present", "SQL syntax" in md)
+    check("markdown evidence present", "sql-error" in md
+          and "user" in md)
     check("markdown appendix json", "## Appendix" in md and '"recon"' in md)
     evidence_hack = dict(report["findings"][0])
     evidence_hack["evidence"] = "<script>alert(1)</script>"
@@ -343,7 +344,12 @@ def test_engagement_pipeline():
         def log_message(self, *args):
             pass
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 8080), Handler)
+    try:
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 8080),
+                                                 Handler)
+    except OSError:
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 8000),
+                                                 Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         try:

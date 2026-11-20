@@ -86,8 +86,14 @@ def collect_findings(engagement):
     probe = engagement.get("probe")
     if probe and probe.get("findings"):
         for item in probe["findings"]:
-            add("Injection vulnerability confirmed by probe", "critical",
-                str(item),
+            kind = item.get("kind", "")
+            title = ("SQL injection (error-based fingerprint)"
+                     if "sql" in kind else "Reflected XSS")
+            evidence = (f"parameter '{item.get('param', '?')}' at "
+                        f"{item.get('url', probe.get('url', 'unknown'))} "
+                        f"triggered {kind} via probe "
+                        f"{item.get('probe', '')!r}")
+            add(title, "critical", evidence,
                 "Parameterize database queries and HTML-escape all "
                 "reflected output; add a Content-Security-Policy.",
                 "injection_probe")
@@ -125,9 +131,9 @@ def collect_findings(engagement):
                 "high" if risky else "low",
                 f"/{path} returned HTTP {entry.get('status')} "
                 f"({entry.get('note', '')})",
-                (f"Restrict or remove {path!r} from the public surface;"
+                (f"Restrict or remove {path!r} from the public surface."
                  if risky else
-                 f"Review whether /{path} should be publicly reachable;"),
+                 f"Review whether /{path} should be publicly reachable."),
                 "dir_probe")
 
     ciphers = engagement.get("ciphers")
