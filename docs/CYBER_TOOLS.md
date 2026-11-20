@@ -8,9 +8,37 @@ libraries, no external APIs. It covers both **defensive auditing** and
 
 - Every active tool (port scan, subdomain sweep, web audit) refuses public
   targets unless you pass `authorized=True`.
+- Or grant a **consent profile** once for targets you own, then use a single
+  `--profile <name>` flag on every active command (see below).
 - Loopback (127.0.0.1) and RFC1918/private addresses always work, so local
   hardening scans never need extra flags.
 - The toolkit never exploits anything; it enumerates, verifies, and reports.
+
+## Consent profiles (`consent.py`)
+
+Record ownership assertions once, then run full engagements without repeating
+the authorization story per command:
+
+```bash
+python -m modules.cyber_tools.clitool consent grant mine example.com 10.0.0.0/24
+python -m modules.cyber_tools.clitool engage example.com --profile mine
+python -m modules.cyber_tools.clitool consent list
+python -m modules.cyber_tools.clitool consent revoke mine
+```
+
+```python
+from modules.cyber_tools import ConsentStore, guard
+
+store = ConsentStore()
+store.grant("mine", ["example.com"], scope="full", ttl_days=30)
+guard("example.com", False, "engagement", store=store, profile="mine")
+```
+
+Profiles are stored locally (`.aira/consent.json`, overridable via
+`AIRA_CONSENT_STORE`), expire after 30 days by default, and cover exact
+hosts, subdomain suffixes, or CIDR ranges. An expired or unrelated profile
+fails loudly instead of silently falling back. Granting a profile is your
+assertion that you own or have permission to test those targets.
 
 ## Modules
 

@@ -69,8 +69,46 @@ class AiraDaemon:
     def _register_builtins(self):
         self.register("heartbeat", self._heartbeat, 60.0)
         self.register("health_check", self._health_check, 120.0)
+        self.register("checkpoint_backup", self._backup_checkpoint, 600.0)
+        self.register("conversation_digest", self._conversation_digest,
+                      900.0)
         if getattr(self.agent, "memory_path", None):
             self.register("memory_persist", self._persist_memory, 30.0)
+
+    def _backup_checkpoint(self, _now):
+        src = os.path.join(ROOT, "tiny_model.pt")
+        if not os.path.exists(src):
+            return
+        backup_dir = os.path.join(os.path.dirname(self.log_path), "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        stamp = datetime.datetime.now(datetime.timezone.utc) \
+            .strftime("%Y%m%dT%H%M%S.%fZ")
+        dest = os.path.join(backup_dir, f"tiny_model-{stamp}.pt")
+        with open(src, "rb") as fin, open(dest, "wb") as fout:
+            fout.write(fin.read())
+        self._prune_backups(backup_dir, keep=3)
+
+    @staticmethod
+    def _prune_backups(backup_dir, keep=3):
+        backups = sorted(
+            f for f in os.listdir(backup_dir) if f.endswith(".pt"))
+        for stale in backups[:-keep]:
+            try:
+                os.remove(os.path.join(backup_dir, stale))
+            except OSError:
+                pass
+
+    def _conversation_digest(self, _now):
+        if self.agent is None:
+            return
+        turns = self.agent.recall()
+        if not turns:
+            return
+        user_turns = [t["text"] for t in turns if t["role"] == "user"]
+        self.log_event(
+            "conversation_digest", turns=len(turns),
+            mood=self.agent.emotion,
+            last_user=(user_turns[-1][:120] if user_turns else ""))
 
     def _persist_memory(self, _now):
         if self.agent is not None and hasattr(self.agent, "save_memory"):

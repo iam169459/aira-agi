@@ -19,19 +19,27 @@ def _targets_local(target):
     return True
 
 
-def guard(target, authorized, action):
-    """Raise PermissionError unless the active action is allowed on target."""
+def guard(target, authorized, action, store=None, profile=None):
+    """Raise PermissionError unless the active action is allowed on target.
+
+    Allowed without ``authorized=True`` when the target is loopback/private
+    or when ``store.covered(profile, target)`` confirms a valid consent
+    profile (non-expired, target listed).
+    """
     if target is None:
         raise ValueError(f"{action}: a target is required")
     if authorized:
         return
     if _targets_local(target):
         return
+    if store is not None and profile is not None \
+            and store.covered(profile, target):
+        return
     raise PermissionError(
-        f"{action}: refusing to touch {target!r} — only loopback/private "
+        f"{action}: refusing to touch {target!r} \u2014 only loopback/private "
         "hosts are scanned by default. Pass authorized=True to confirm you "
-        "own or have permission to test this target."
-    )
+        "own or have permission to test this target, or --profile <name> "
+        "with a previously granted consent profile.")
 
 
 def require_authorization(action):

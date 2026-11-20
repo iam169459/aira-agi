@@ -24,3 +24,6 @@ agi_state.json
 
 # Agent runtime state
 .aira/
+
+# derived beast training corpus (rebuilt by train.py)
+data/beast_corpus.txt

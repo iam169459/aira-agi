@@ -8,6 +8,7 @@ unless it is given ``authorized=True`` together with an explicit target
 you control.
 """
 from .guard import require_authorization, guard
+from .consent import ConsentStore, target_covered
 from .hashing import (digest_bytes, digest_file, hash_identifier,
                       password_strength, hmac_digest, baseline_build,
                       baseline_verify)
@@ -29,10 +30,10 @@ from .fingerprint import (fingerprint_http, dir_probe, service_banner,
 from .reporting import (build_report, collect_findings, render_markdown,
                         render_html, save_report, SEVERITY_ORDER)
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 __all__ = [
-    "require_authorization", "guard",
+    "require_authorization", "guard", "ConsentStore", "target_covered",
     "digest_bytes", "digest_file", "hash_identifier", "password_strength",
     "hmac_digest", "baseline_build", "baseline_verify",
     "derive_key", "encrypt", "decrypt",

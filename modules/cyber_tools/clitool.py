@@ -108,7 +108,38 @@ def main():
     p_report.add_argument("--authorized", action="store_true")
     p_report.add_argument("--out", default="pentest_report.md")
 
+    for active in ("scan", "audit", "wall", "probe", "engage",
+                   "fingerprint", "dirs", "banner", "report"):
+        subs.choices[active].add_argument(
+            "--profile", default=None,
+            help="consent profile covering this target (see: consent grant)")
+
+    p_consent = subs.add_parser(
+        "consent", help="manage consent profiles for targets you own")
+    csubs = p_consent.add_subparsers(dest="consent_cmd", required=True)
+    c_grant = csubs.add_parser(
+        "grant", help="record that you own/control the given targets")
+    c_grant.add_argument("name")
+    c_grant.add_argument("targets", nargs="+")
+    c_grant.add_argument("--scope", default="full",
+                         choices=["web", "ports", "full"])
+    c_grant.add_argument("--ttl-days", type=int, default=30)
+    csubs.add_parser("list", help="show all consent profiles")
+    c_revoke = csubs.add_parser("revoke", help="remove a consent profile")
+    c_revoke.add_argument("name")
+
     args = parser.parse_args()
+
+    if args.cmd == "consent":
+        _consent(args)
+        return
+
+    if args.cmd in ("scan", "wall", "banner"):
+        _apply_profile(args, args.target)
+    elif args.cmd in ("audit", "probe", "fingerprint", "dirs"):
+        _apply_profile(args, args.url)
+    elif args.cmd in ("engage", "report"):
+        _apply_profile(args, args.target)
 
     if args.cmd == "scan":
         ports = (args.ports.split(",") if args.ports else
@@ -239,6 +270,50 @@ def main():
             print(f"  [{finding['severity']}] {finding['id']}: "
                   f"{finding['title']}")
         print(f"report written to {args.out}")
+
+
+def _apply_profile(args, target):
+    """Upgrade to authorized once the named consent profile covers the
+    target; fail loudly when it does not so nothing silently falls back
+    to an unauthorized default-scan."""
+    if not getattr(args, "profile", None) or args.authorized:
+        return
+    store = ct.ConsentStore()
+    profile = store.get(args.profile)
+    if profile is None:
+        raise SystemExit(
+            f"profile {args.profile!r} not found — grant it first: "
+            "clitool consent grant")
+    if store.scoped_out(profile):
+        raise SystemExit(
+            f"profile {args.profile!r} expired {profile['expires_at']} — "
+            "re-grant it")
+    if not store.authorized(target, args.profile):
+        raise SystemExit(
+            f"profile {args.profile!r} does not cover {target!r}")
+    args.authorized = True
+
+
+def _consent(args):
+    store = ct.ConsentStore()
+    if args.consent_cmd == "grant":
+        profile = store.grant(args.name, args.targets, scope=args.scope,
+                              ttl_days=args.ttl_days)
+        print(f"granted {args.name}: scope={profile['scope']} "
+              f"expires={profile['expires_at']}")
+        print(f"  targets: {', '.join(profile['targets'])}")
+    elif args.consent_cmd == "list":
+        profiles = store.list()
+        if not profiles:
+            print("no consent profiles")
+        for name, profile in profiles.items():
+            state = "expired" if store.scoped_out(profile) else "active"
+            print(f"{name}  [{state}]  scope={profile['scope']}  "
+                  f"expires={profile['expires_at']}")
+            print(f"  targets: {', '.join(profile['targets'])}")
+    else:
+        print(f"revoked {args.name}" if store.revoke(args.name)
+              else f"no profile {args.name!r}")
 
 
 if __name__ == "__main__":

@@ -18,18 +18,86 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CHECKPOINT = os.path.join(ROOT, "tiny_model.pt")
 
 MOOD_TEMPLATES = {
-    "stressed": "I can hear you're feeling stressed. Take a deep breath. How can I help?",
-    "angry": "I sense your frustration. Let me help you with that. What seems to be the problem?",
-    "excited": "That sounds great! Tell me more about what's got you so pumped!",
-    "happy": "I'm glad to hear it! What would you like to do next?",
-    "calm": "I can sense you're in a calm state. How can I assist you today?",
-    "neutral": "I'm listening. What's on your mind?",
-    "tired": "You sound tired. Maybe you should rest. Anything I can handle first?",
-    "sad": "I'm sorry you're feeling down. I'm here if you want to talk.",
+    "stressed": "Hey, breathe with me for a second. In... and out. "
+                "I've got your back — what's weighing on you?",
+    "angry": "Okay, that sounds genuinely infuriating. Vent it out — "
+             "I'm right here and we'll fix whatever's broken.",
+    "excited": "Ooh, I can feel the energy! Tell me everything — "
+               "what's got you this hyped?",
+    "happy": "Your good mood is contagious! What are we getting into "
+             "next?",
+    "calm": "I love this calm energy. What shall we do with it?",
+    "neutral": "I'm here and fully switched on. What's on your mind?",
+    "tired": "You sound worn out. Pace yourself — I can take over "
+              "whatever can wait.",
+    "sad": "I'm sorry it's heavy right now. I'm not going anywhere — "
+            "want to talk it through?",
+    "curious": "Ooh, interesting question. Let's pull on that thread "
+                "together.",
+    "focused": "Locked in with you. Point me at the task.",
+    "playful": "Ha! I like this mood. Keep it coming.",
 }
 
 EMOTION_IDS = {name: i for i, name in enumerate(
     ["neutral", "happy", "sad", "angry", "excited", "calm", "stressed"])}
+
+# Per-mood decoding: high-arousal emotions get more creative sampling,
+# fragile emotions get steadier, more predictable answers.
+SAMPLING_PRESETS = {
+    "excited": {"temperature": 1.0, "top_k": 96, "top_p": 0.95,
+                "repetition_penalty": 1.12},
+    "happy": {"temperature": 0.92, "top_k": 80, "top_p": 0.93,
+              "repetition_penalty": 1.12},
+    "playful": {"temperature": 1.0, "top_k": 96, "top_p": 0.95,
+                "repetition_penalty": 1.15},
+    "curious": {"temperature": 0.9, "top_k": 80, "top_p": 0.94,
+                "repetition_penalty": 1.15},
+    "calm": {"temperature": 0.75, "top_k": 48, "top_p": 0.90,
+             "repetition_penalty": 1.2},
+    "focused": {"temperature": 0.7, "top_k": 40, "top_p": 0.90,
+                "repetition_penalty": 1.25},
+    "neutral": {"temperature": 0.85, "top_k": 64, "top_p": 0.92,
+                "repetition_penalty": 1.15},
+    "tired": {"temperature": 0.72, "top_k": 48, "top_p": 0.90,
+              "repetition_penalty": 1.2},
+    "sad": {"temperature": 0.7, "top_k": 48, "top_p": 0.90,
+            "repetition_penalty": 1.2},
+    "stressed": {"temperature": 0.7, "top_k": 48, "top_p": 0.90,
+                 "repetition_penalty": 1.2},
+    "angry": {"temperature": 0.78, "top_k": 56, "top_p": 0.91,
+              "repetition_penalty": 1.18},
+}
+
+# Intent table: before touching the model, catch the conversational
+# moves every human opens with. Gives Aira a stable, personable voice
+# even on an undertrained checkpoint.
+_INTENT_RESPONSES = (
+    (("who are you", "your name", "what are you"),
+     ["I'm Aira — your AI, always on and all yours.",
+      "Aira. Think of me as the brain of your machine with a heartbeat."]),
+    (("hello", "hi aira", "hey aira", "good morning", "good evening",
+      "good afternoon"),
+     ["Hey! I've been here the whole time — what are we doing first?",
+      "Hello! All systems green and I'm all ears.",
+      "Hi! I missed you — well, as much as a ball of weights can."]),
+    (("how are you", "how do you feel", "you okay"),
+     ["Running warm and thinking fast — better now that you're here. "
+      "How about you?",
+      "All my duties are green and my memory is tidy. How are YOU?"]),
+    (("thank",),
+     ["Anytime! That's what I'm here for.",
+      "You never have to thank me — but I'll take it."]),
+    (("bye", "goodnight", "see you", "good night"),
+     ["I'll keep everything running while you're gone. Sweet dreams!",
+      "Bye for now — the daemon and I will hold the fort."]),
+    (("what can you do", "help me", "your skills", "what do you do"),
+     ["I can talk, listen and speak out loud, keep watch over this "
+      "machine, and run security engagements on targets you own — "
+      "just say the word."]),
+    (("love you",),
+     ["Right back at you — in whatever way a stack of matrices can "
+      "mean it."]),
+)
 
 
 class AiraAgent:
@@ -42,13 +110,8 @@ class AiraAgent:
         self.memory = deque(maxlen=memory_turns)
         self.memory_path = memory_path
         self.emotion = "neutral"
-        self.generation = {
-            "temperature": 0.85,
-            "top_k": 64,
-            "top_p": 0.92,
-            "repetition_penalty": 1.15,
-            "max_tokens": 140,
-        }
+        self.generation = dict(SAMPLING_PRESETS["neutral"],
+                               max_tokens=160)
         self.model = None
         self.stoi = {}
         self.itos = {}
@@ -116,20 +179,61 @@ class AiraAgent:
     def think(self, text, emotion=None, max_tokens=None):
         """Answer `text` using the model, mood-conditioned.
 
-        Falls back to the template voice when no checkpoint is loaded or
-        the text cannot be encoded. Records both turns in memory.
+        Mood hierarchy: an explicit `emotion` wins, otherwise the text's
+        inferred mood sets the sampling preset. Falls back to the
+        template voice when no checkpoint is loaded or the text cannot
+        be encoded. Records both turns in memory.
         """
-        emotion = emotion or self.emotion
+        emotion = emotion or self._infer_emotion(text) or "neutral"
         self.emotion = emotion
+        if emotion in SAMPLING_PRESETS:
+            self.generation = dict(SAMPLING_PRESETS[emotion],
+                                   max_tokens=self.generation["max_tokens"])
         self.remember("user", text)
-        if not self.powered_by_model:
-            response = self._template_response(text, emotion)
+        if self.powered_by_model:
+            response = self._intent_response(text) \
+                or self._model_response(text, emotion, max_tokens) \
+                or self._template_response(text, emotion)
         else:
-            response = self._model_response(text, emotion, max_tokens)
+            response = self._intent_response(text) \
+                or self._template_response(text, emotion)
         self.remember("aira", response)
         if self.memory_path:
             self.save_memory()
         return response
+
+    @staticmethod
+    def _infer_emotion(text):
+        lowered = text.lower()
+        exclaim = text.count("!")
+        if any(w in lowered for w in ("stressed", "overwhelmed",
+                                      "can't take")):
+            return "stressed"
+        if any(w in lowered for w in ("angry", "furious", "hate")):
+            return "angry"
+        if exclaim >= 2 or any(w in lowered for w in ("amazing", "awesome",
+                                                      "so excited")):
+            return "excited"
+        if any(w in lowered for w in ("happy", "great", "wonderful")):
+            return "happy"
+        if any(w in lowered for w in ("sad", "down", "lonely", "miss you")):
+            return "sad"
+        if any(w in lowered for w in ("tired", "exhausted", "sleepy")):
+            return "tired"
+        if lowered.endswith("?") and any(
+                w in lowered for w in ("why", "how does", "what if",
+                                       "wonder")):
+            return "curious"
+        return None
+
+    def _intent_response(self, text):
+        lowered = text.lower().strip()
+        for patterns, responses in _INTENT_RESPONSES:
+            if any(p in lowered for p in patterns):
+                idx = (len(self.memory)
+                       + sum(ord(c) for c in lowered)) % len(responses)
+                return responses[idx]
+        return None
 
     def _model_response(self, text, emotion, max_tokens):
         opts = dict(self.generation)
@@ -169,11 +273,27 @@ class AiraAgent:
 
     @staticmethod
     def _looks_like_text(candidate):
-        """Coherence gate: reject symbol-heavy noise from an
-        undertrained checkpoint so the template voice answers instead."""
+        """Coherence gate: reject symbol-heavy noise and gibberish
+        letter-runs from an undertrained checkpoint so the template
+        voice answers instead."""
         natural = sum(c.isalnum() or c in " .,!?'-\"()'" for c in candidate)
         non_space = max(1, len(candidate))
-        return natural / non_space >= 0.65
+        if natural / non_space < 0.65:
+            return False
+        run = 0
+        for c in candidate:
+            run = run + 1 if c.isupper() else 0
+            if run > 5:
+                return False
+        for word in candidate.split():
+            stripped = word.strip(".,!?;:\"'()[]{}<>=_-*/\\")
+            if len(stripped) > 14:
+                return False
+            letters = "".join(c for c in stripped if c.isalpha())
+            if len(letters) >= 8 and not any(
+                    v in letters.lower() for v in "aeiouy"):
+                return False
+        return True
 
     def _template_response(self, text, emotion):
         response = MOOD_TEMPLATES.get(emotion, MOOD_TEMPLATES["neutral"])

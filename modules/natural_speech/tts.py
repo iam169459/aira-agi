@@ -89,6 +89,23 @@ BASE_DURATION = {
 
 PAUSES = {"SIL": 0.30, "COMMA": 0.17, "WBRK": 0.062, "BRK": 0.09}
 
+# Emotion -> prosody modifiers. Multiplied into the base pitch, speaking
+# rate, and pitch-span so the same sentence actually *sounds* different
+# per mood (sad is slower/flatter, excited faster and brighter, ...).
+EMOTION_PROSODY = {
+    "neutral": {"pitch": 1.00, "rate": 1.00, "range": 1.00},
+    "happy": {"pitch": 1.06, "rate": 1.06, "range": 1.20},
+    "excited": {"pitch": 1.12, "rate": 1.15, "range": 1.35},
+    "playful": {"pitch": 1.09, "rate": 1.10, "range": 1.30},
+    "curious": {"pitch": 1.04, "rate": 0.98, "range": 1.15},
+    "calm": {"pitch": 0.98, "rate": 0.95, "range": 0.85},
+    "focused": {"pitch": 0.99, "rate": 1.00, "range": 0.90},
+    "tired": {"pitch": 0.95, "rate": 0.90, "range": 0.80},
+    "sad": {"pitch": 0.93, "rate": 0.88, "range": 0.75},
+    "stressed": {"pitch": 1.05, "rate": 1.10, "range": 1.25},
+    "angry": {"pitch": 1.06, "rate": 1.12, "range": 1.30},
+}
+
 
 class TextToSpeech:
     """From-scratch synthesizer with a young-female-style default voice."""
@@ -106,6 +123,12 @@ class TextToSpeech:
                       "tilt": 1800.0},
             "neutral": {"f0": 150.0, "oq": 0.58, "breathiness": 0.016,
                         "tilt": 1100.0},
+            "aira": {"f0": 200.0, "oq": 0.60, "breathiness": 0.018,
+                     "tilt": 1550.0},
+            "bright": {"f0": 195.0, "oq": 0.56, "breathiness": 0.012,
+                       "tilt": 1750.0},
+            "soft": {"f0": 172.0, "oq": 0.72, "breathiness": 0.032,
+                     "tilt": 1200.0},
         }
         preset = self.voice_names.get(voice,
                                       self.voice_names["female"])
@@ -134,9 +157,11 @@ class TextToSpeech:
         return events
 
     def _plan_events(self, phonemes, text="", emotion="neutral"):
-        base_f0 = self.synth.base_f0
-        f0_span = self.synth.f0_range
-        speed = self.rate
+        prosody = EMOTION_PROSODY.get(emotion,
+                                      EMOTION_PROSODY["neutral"])
+        base_f0 = self.synth.base_f0 * prosody["pitch"]
+        f0_span = self.synth.f0_range * prosody["range"]
+        speed = self.rate * prosody["rate"]
 
         stress_flags = self._mark_stress(phonemes)
 

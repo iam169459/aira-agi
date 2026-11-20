@@ -167,6 +167,7 @@ aira-agi/
 │   ├── self_healing.py          # Self-healing code system
 │   └── cyber_tools/             # Cybersecurity toolkit — see docs/CYBER_TOOLS.md
 │       ├── guard.py             #   authorization gate for active scans
+│       ├── consent.py           #   consent profiles: pre-approved own targets
 │       ├── hashing.py           #   digests, hash ID, password strength, baselines
 │       ├── crypto.py            #   SHA-256-CTR + HMAC encryption, PBKDF2
 │       ├── portscan.py          #   concurrent TCP scan with banners
@@ -192,6 +193,7 @@ aira-agi/
 │   ├── test_agi_core.py         #   AGI core components
 │   ├── test_agi_power.py        #   sampling, agent brain, daemon
 │   ├── test_agi_integration.py  #   unified brain wiring, memory persistence
+│   ├── test_beast_mode.py       #   consent profiles, persona, emotion prosody
 │   └── ...
 │
 ├── docs/                        # Guides & examples
@@ -685,10 +687,16 @@ performance numbers.
 
 ## Cybersecurity Tools (defensive + authorized-target)
 
-Aira includes a stdlib-only cybersecurity toolkit (`modules/cyber_tools/`)
-spanning defensive auditing and authorized-target testing. Every active tool
-(port scan, web audit, subdomain sweep) **refuses public targets** unless you
-pass `authorized=True` — loopback and private networks always work.
+Aira includes a stdlib-only cybersecurity toolkit (`modules/cyber_tools/`,
+v2.2.0) spanning defensive auditing and authorized-target testing. Every
+active tool (port scan, web audit, subdomain sweep) **refuses public targets**
+unless you pass `authorized=True` — loopback and private networks always work.
+For targets you own, a **consent profile** replaces the per-command flag:
+
+```bash
+python -m modules.cyber_tools.clitool consent grant mine example.com
+python -m modules.cyber_tools.clitool engage example.com --profile mine
+```
 
 ```python
 from modules.cyber_tools import password_strength, encrypt, decrypt, scan_ports
@@ -728,8 +736,8 @@ brute-force/IOC log analysis, and DNS recon.
 
 Deliberately excluded: DoS/DDoS/flooding, exploit payloads, exfiltration —
 indiscriminate attack tools with no authorized-testing value. Every active
-tool still requires `authorized=True` for non-local targets. Full guide:
-[docs/CYBER_TOOLS.md](docs/CYBER_TOOLS.md).
+tool still requires `authorized=True` (or a covering consent profile) for
+non-local targets. Full guide: [docs/CYBER_TOOLS.md](docs/CYBER_TOOLS.md).
 
 ---
 
@@ -814,10 +822,21 @@ Knowledge representation:
 
 ### Agent Brain & Always-On Mode
 - **`ai_core/agent.py` — `AiraAgent`**: the single conversation brain for the whole system — loads a `train.py` checkpoint and answers with real model generation (top-k / top-p / repetition penalty, mood-conditioned via `emotion_id`), with bounded conversation memory (`recall`, `remember`) threaded into the prompt context, optionally persisted as JSONL (`memory_path`) so conversations survive restarts. A coherence gate falls back to the mood-aware template voice when no checkpoint exists or output looks like noise — the agent always answers.
+- **Mood-tuned decoding**: every mood has a sampling preset (`SAMPLING_PRESETS`) — high-arousal moods (excited, playful) sample hotter/wider, fragile moods (sad, stressed) sample steadier; Aira also infers the mood from the text when none is passed.
+- **Intent layer**: greetings, farewells, identity, thanks, and help questions route through a persona-aware intent table before the model, so Aira answers like herself even on an undertrained checkpoint.
 - **One brain everywhere**: `ai_core/main.py` (`EmotionAwareAI.generate_response`), `purple_ai/core/brain.py` (`PurpleAgent.respond`), and `agi_core` (`AGIIntegration` generic chat, `TransformerIntegration` text API) all delegate to the same `AiraAgent` — no stub or duplicated model code left.
 - **`ai_core/daemon.py` — `AiraDaemon`**: keeps Aira always active. Registered duties (`heartbeat`, `health_check`, plus anything you `register`) run on their own intervals; a crashing duty is isolated, backed off, and disabled after 3 failures instead of taking the loop down; every cycle appends JSONL to `.aira/agent_log.jsonl`; SIGINT/SIGTERM shut down gracefully.
+- **New built-in duties**: `checkpoint_backup` (rolling 3-copy backup of the model checkpoint every 10 min, next to the daemon log) and `conversation_digest` (periodic mood + conversation summary event).
 
 The daemon also registers a `memory_persist` duty (every 30s) when its brain has `memory_path` set, so an always-active Aira keeps its conversation memory durable.
+
+#### Training profiles
+
+```bash
+python train.py --preset tiny     # original starter (fast)
+python train.py --preset base     # mid-size, conversations
+python train.py --preset beast    # ~10M params, conversation + code corpus
+```
 
 ```bash
 python -m ai_core.daemon --once            # one supervised cycle
