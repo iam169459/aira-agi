@@ -144,7 +144,9 @@ aira-agi/
 │
 ├── ai_core/                     # Multi-Modal AI Core
 │   ├── main.py                  # Emotion-aware AI assistant (lazy model init)
-│   └── model.py                 # EmotionAwareGPT model (shared by train/generate)
+│   ├── model.py                 # EmotionAwareGPT model (shared by train/generate)
+│   ├── agent.py                 # AiraAgent: model-backed brain + conversation memory
+│   └── daemon.py                # Always-on supervisor: duties, heartbeat, self-restart
 │
 ├── modules/                     # Utility Modules
 │   ├── __init__.py
@@ -558,6 +560,7 @@ Or run each suite standalone (also works under pytest):
 ```bash
 python tests/test_natural_speech.py   # TTS/STT engine: roundtrips, DTW, WAV I/O
 python tests/test_transformer.py      # fused attention, KV cache, legacy remap
+python tests/test_agi_power.py        # sampling controls, agent brain, always-on daemon
 python tests/test_agi_core.py         # AGI core components
 ```
 
@@ -710,6 +713,22 @@ Knowledge representation:
 - **Memory Queries**: Near-instantaneous
 - **Training**: ~1-2 steps/second on CPU, 10-50 steps/second on GPU
 - **Model Size**: Default transformer ~2-3M parameters (~10-15MB)
+
+### Sampling & Generation Power
+`EmotionAwareGPT.generate`/`sampling_probs` now support modern decoding controls on top of temperature, with unchanged behavior under defaults:
+- **top-k truncation** — `top_k` limits sampling to the k most likely tokens
+- **nucleus (top-p) sampling** — `top_p` keeps the smallest token set whose cumulative probability crosses the threshold
+- **repetition penalty** — `repetition_penalty` scales down logits of already-generated tokens (positive and negative logits both) to break repetition loops
+- All three compose and stay exact on the KV-cached path; the phase-verified cache-vs-recompute token equality holds under the same RNG state when controls are identical.
+
+### Agent Brain & Always-On Mode
+- **`ai_core/agent.py` — `AiraAgent`**: loads a `train.py` checkpoint and answers with real model generation (top-k / top-p / repetition penalty, mood-conditioned via `emotion_id`), with bounded conversation memory (`recall`, `remember`) threaded into the prompt context. A coherence gate falls back to the mood-aware template voice when no checkpoint exists or output looks like noise — the agent always answers.
+- **`ai_core/daemon.py` — `AiraDaemon`**: keeps Aira always active. Registered duties (`heartbeat`, `health_check`, plus anything you `register`) run on their own intervals; a crashing duty is isolated, backed off, and disabled after 3 failures instead of taking the loop down; every cycle appends JSONL to `.aira/agent_log.jsonl`; SIGINT/SIGTERM shut down gracefully.
+
+```bash
+python -m ai_core.daemon --once            # one supervised cycle
+python -m ai_core.daemon --with-agent      # always-on with the model brain
+```
 
 ### Transformer Optimizations
 - **Fused QKV attention**: all heads project through one `nn.Linear(n_embd, 3*n_embd)` instead of `3 × n_head` separate Linears; legacy per-head checkpoints are remapped automatically by `fuse_legacy_state_dict` in `ai_core/model.py`.

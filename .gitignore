@@ -21,3 +21,6 @@ agi_state.json
 
 # macOS
 .DS_Store
+
+# Agent runtime state
+.aira/
