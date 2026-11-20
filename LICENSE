@@ -1,44 +1,59 @@
 PROPRIETARY SOFTWARE LICENSE AGREEMENT
 
-Copyright (c) 2024 iam169459
+Copyright (c) 2024-2026 iam169459. All rights reserved.
 
-NOTICE: This software is the proprietary property of iam169459 and is
-protected by copyright law and international treaties.
+NOTICE: This software and its source code are the proprietary property of
+iam169459 and are protected by copyright law and international treaties.
+No rights are granted except as expressly stated below.
 
 1. LICENSE GRANT
-   This software is provided solely for your personal, non-commercial use.
-   No rights are granted to use, copy, modify, merge, publish, distribute,
-   sublicense, or sell copies of this software without prior written
-   permission from the copyright holder.
+   This software is provided solely for viewing and personal,
+   non-commercial reference. No rights are granted to use, copy, modify,
+   merge, publish, distribute, sublicense, sell, or deploy this software
+   without prior written permission from the copyright holder.
 
 2. RESTRICTIONS
    You may NOT:
-   - Use this software for any commercial purpose
-   - Distribute this software to any third party
+   - Use this software or its output for any commercial purpose
+   - Distribute this software or any portion of it to any third party
    - Modify, reverse engineer, decompile, or disassemble this software
    - Use this software to create derivative works
    - Remove or alter any copyright notices or proprietary legends
 
-3. TERMINATION
-   This license terminates automatically if you violate any of these
-   restrictions and may be terminated by the copyright holder at any time.
+3. AI AND MACHINE LEARNING PROHIBITION
+   In addition to the restrictions above, you may NOT:
+   - Use this software, its source code, documentation, or any portion of
+     it to train, fine-tune, evaluate, benchmark, or improve any machine
+     learning or artificial intelligence model
+   - Include this software, its source code, or its documentation, in
+     whole or in part, in any dataset, corpus, or index intended for
+     training or evaluating machine learning models
+   - Use automated systems, agents, crawlers, or scrapers (including
+     AI-assisted tools) to copy, extract, summarize, embed, index, or
+     transform this software or its documentation for any purpose,
+     including code-completion model training or retrieval corpora
+   - Generate derivative code, translations, or re-implementations of
+     this software using AI systems trained on or given access to it
+   These prohibitions apply notwithstanding anything to the contrary in
+   any robot exclusion file, terms of service, or platform default.
 
-4. DISCLAIMER
+4. DOCUMENTED CONSENT
+   Downloads, clones, forks, or API/crawler access to this repository do
+   not constitute consent to any license. No intellectual-property
+   license is granted by access; only a written, signed agreement from
+   the copyright holder grants any rights.
+
+5. TERMINATION
+   This license terminates automatically if you violate any of these
+   restrictions and may be terminated by the copyright holder at any
+   time. Upon termination you must delete all copies in your possession
+   or control, including copies incorporated into datasets, corpora, or
+   model training runs (to the extent technically verifiable).
+
+6. DISCLAIMER
    This software is provided "AS IS" without warranty of any kind,
    express or implied, including but not limited to the warranties of
-   merchantability, fitness for a particular purpose, and non-infringement.
-   In no event shall the copyright holder be liable for any claim,
-   damages, or other liability arising from, out of, or in connection
-   with this software.
-
-5. GOVERNING LAW
-   This agreement shall be governed by and construed in accordance with
-   the laws of the jurisdiction where the copyright holder resides.
-
----
-
-For permission to use this software, please contact: iam169459
-
-All rights reserved. No part of this software may be reproduced,
-stored in a retrieval system, or transmitted in any form or by any
-means without the prior written permission of the copyright holder.
+   merchantability, fitness for a particular purpose, and
+   non-infringement. In no event shall the copyright holder be liable
+   for any claim, damages, or other liability arising from the use of
+   this software.

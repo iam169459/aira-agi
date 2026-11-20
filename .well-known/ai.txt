@@ -1,0 +1,19 @@
+# ai.txt — machine-readable AI access declaration (spawning.ai format)
+# Repository: iam169459/aira-agi ("Aira AGI")
+
+spawning:ai-text-declaration: 1
+
+# Training: reproduction of this work is disallowed
+Training: n
+Search: n
+Commercial: n
+
+# Human-readable statement
+Copyright: Copyright (c) 2024-2026 iam169459. All rights reserved.
+License: Proprietary. No license is granted by access, cloning, or
+  forking. See LICENSE for full terms.
+ Restrictions: This site/repo content, code, and documentation may not be
+ used to train, fine-tune, evaluate, or index any machine-learning or
+ AI system, nor included in any dataset or corpus, nor copied, embedded,
+ summarized, or transformed by automated agents for any purpose.
+Contact: https://github.com/iam169459
