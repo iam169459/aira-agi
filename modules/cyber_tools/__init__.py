@@ -24,8 +24,12 @@ from .webpwn import injection_probe
 from .repair import plan_repairs, secure_permissions
 from .sentinel import Sentinel, listening_ports
 from .engagement import run_engagement
+from .fingerprint import (fingerprint_http, dir_probe, service_banner,
+                          cipher_audit, DEFAULT_DIR_WORDS)
+from .reporting import (build_report, collect_findings, render_markdown,
+                        render_html, save_report, SEVERITY_ORDER)
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 __all__ = [
     "require_authorization", "guard",
@@ -41,4 +45,8 @@ __all__ = [
     "wall_integrity", "tls_version_check", "RISKY_PORTS",
     "injection_probe", "plan_repairs", "secure_permissions",
     "Sentinel", "listening_ports", "run_engagement",
+    "fingerprint_http", "dir_probe", "service_banner", "cipher_audit",
+    "DEFAULT_DIR_WORDS",
+    "build_report", "collect_findings", "render_markdown", "render_html",
+    "save_report", "SEVERITY_ORDER",
 ]

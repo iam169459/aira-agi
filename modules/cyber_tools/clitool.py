@@ -10,6 +10,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
 from modules import cyber_tools as ct
 
 
+def _severity_counts(counts):
+    return " | ".join(f"{s.upper()} {n}" for s, n in counts.items() if n)
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="cyber-tools",
@@ -77,6 +81,32 @@ def main():
     p_sentinel.add_argument("--auth-log", default=None)
     p_sentinel.add_argument("--interval", type=float, default=5.0)
     p_sentinel.add_argument("--duration", type=float, default=30.0)
+
+    p_fp = subs.add_parser("fingerprint",
+                           help="web stack + tech fingerprint")
+    p_fp.add_argument("url")
+    p_fp.add_argument("--timeout", type=float, default=5.0)
+    p_fp.add_argument("--authorized", action="store_true")
+
+    p_dirs = subs.add_parser("dirs", help="light directory probe")
+    p_dirs.add_argument("url")
+    p_dirs.add_argument("--words", default=None,
+                        help="path to a wordlist (default: bundled)")
+    p_dirs.add_argument("--timeout", type=float, default=3.0)
+    p_dirs.add_argument("--authorized", action="store_true")
+
+    p_banner = subs.add_parser("banner",
+                               help="service banner + version-age check")
+    p_banner.add_argument("target")
+    p_banner.add_argument("--ports", default=None)
+    p_banner.add_argument("--timeout", type=float, default=2.0)
+    p_banner.add_argument("--authorized", action="store_true")
+
+    p_report = subs.add_parser("report",
+                               help="full engagement + Markdown report")
+    p_report.add_argument("target")
+    p_report.add_argument("--authorized", action="store_true")
+    p_report.add_argument("--out", default="pentest_report.md")
 
     args = parser.parse_args()
 
@@ -162,6 +192,53 @@ def main():
         except KeyboardInterrupt:
             events = []
         print(f"{len(events)} breach event(s) reported")
+    elif args.cmd == "fingerprint":
+        result = ct.fingerprint_http(args.url, timeout=args.timeout,
+                                     authorized=args.authorized)
+        if not result["ok"]:
+            print(result.get("error", "fetch failed"))
+        else:
+            print(f"status    {result['status']}")
+            print(f"server    {result['server'] or '-'}")
+            print(f"powered   {result['powered_by'] or '-'}")
+            print(f"tech      {', '.join(result['tech']) or '-'}")
+            for hint in result["hints"]:
+                print(f"  hint: {hint}")
+    elif args.cmd == "dirs":
+        words = (ct.load_wordlist(args.words) if args.words else None)
+        result = ct.dir_probe(args.url, words=words,
+                              timeout=args.timeout,
+                              authorized=args.authorized)
+        print(f"{result['checked']} path(s) checked, "
+              f"{len(result['found'])} interesting, "
+              f"{result['errors']} error(s)")
+        for entry in result["found"]:
+            print(f"  [{entry['status']}] /{entry['path']} — {entry['note']}")
+    elif args.cmd == "banner":
+        ports = ([int(p) for p in args.ports.split(",")]
+                 if args.ports else None)
+        result = ct.service_banner(args.target, ports=ports,
+                                   timeout=args.timeout,
+                                   authorized=args.authorized)
+        for svc in result["services"]:
+            flag = " OUTDATED" if svc["outdated"] else ""
+            print(f"port {svc['port']:>5}  "
+                  f"{svc['service'] or 'unknown'} "
+                  f"{svc['version'] or ''}{flag}")
+            if svc["banner"]:
+                print(f"          banner: {svc['banner'][:100]}")
+    elif args.cmd == "report":
+        engagement = ct.run_engagement(args.target,
+                                       authorized=args.authorized)
+        doc = ct.build_report(engagement)
+        ct.save_report(doc, args.out)
+        print(f"risk rating {doc['risk_rating']} — "
+              f"{doc['posture']}")
+        print(f"{_severity_counts(doc['counts'])}")
+        for finding in doc["findings"]:
+            print(f"  [{finding['severity']}] {finding['id']}: "
+                  f"{finding['title']}")
+        print(f"report written to {args.out}")
 
 
 if __name__ == "__main__":

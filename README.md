@@ -176,6 +176,8 @@ aira-agi/
 │       ├── repair.py            #   finding-to-fix remediation engine
 │       ├── sentinel.py          #   live tamper/rogue-port/brute-force watch
 │       ├── engagement.py        #   attack + repair pipeline in one pass
+│       ├── fingerprint.py       #   web-tech fingerprint, dir probe, banner age, cipher audit
+│       ├── reporting.py         #   severity-ranked Markdown/HTML pentest reports
 │       └── clitool.py           #   python -m modules.cyber_tools.clitool
 │
 ├── tests/                       # Test suites (pytest-compatible)
@@ -183,6 +185,7 @@ aira-agi/
 │   ├── test_transformer.py      #   fused attention, KV cache, legacy remap
 │   ├── test_cyber_tools.py      #   hashes, crypto, scanners, guard, log parsing
 │   ├── test_cyber_advanced.py   #   crack, wall, probe, repair, sentinel, engage
+│   ├── test_cyber_professional.py  # fingerprint, dir probe, banners, ciphers, reports
 │   └── test_agi_core.py         #   AGI core components
 │
 ├── purple_ai/                   # Purple AI Framework

@@ -28,7 +28,9 @@ libraries, no external APIs. It covers both **defensive auditing** and
 | `webpwn.py` | Injection probes (reflected XSS, SQL-error fingerprints) on endpoints you are authorized to test. GET-only, non-destructive, no data extraction |
 | `repair.py` | Repair engine: converts findings into a concrete remediation plan (firewall rules, TLS config, header snippets, credential rotation), plus optional dry-run/confirm file-permission hardening |
 | `sentinel.py` | Continuous watch: file-tamper checksums, rogue-listener drift (`/proc/net/tcp`), brute-force surges → breach events |
-| `engagement.py` | **Attack + repair in one pass**: `run_engagement` chains recon → port scan → wall integrity → web probes → repair plan |
+| `engagement.py` | **Attack + repair in one pass**: `run_engagement` chains recon → port scan → wall integrity → fingerprint → dir probe → cipher audit → web probes → repair plan |
+| `fingerprint.py` | Professional enumeration: web-stack fingerprinting (server/powered-by/cookies/generator), restrained dirb-style directory probing, service banner + version-age analysis (outdated OpenSSH/Apache/PHP…), TLS cipher-suite audit (weak/medium/strong classes) |
+| `reporting.py` | **Professional pentest deliverables**: severity-ranked findings register (critical→info), executive summary, risk rating, remediation plan, raw-output appendix — rendered as Markdown or HTML via `build_report` + `save_report` |
 
 ## What is deliberately NOT included
 
