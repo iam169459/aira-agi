@@ -3,7 +3,7 @@
 > **A Complete Offline Artificial General Intelligence System**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![License: Proprietary](https://img.shields.io/badge/license-proprietary--no--AI--training-red.svg)](LICENSE)
 [![Offline](https://img.shields.io/badge/offline-100%25-brightgreen.svg)](https://shields.io/)
 [![Privacy](https://img.shields.io/badge/privacy-100%25-important.svg)](https://shields.io/)
 [![Status: Active](https://img.shields.io/badge/status-active-success.svg)](https://shields.io/)
@@ -23,13 +23,14 @@
 - [Configuration](#configuration)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
+- [Content & AI Protection](#content--ai-protection)
+- [License](#license)
 - [Components Deep Dive](#components-deep-dive)
 - [Cybersecurity Tools](#cybersecurity-tools-defensive--authorized-target)
 - [Privacy & Security](#privacy--security)
 - [Performance](#performance)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
-- [License](#license)
 - [Acknowledgments](#acknowledgments)
 
 ---
@@ -884,35 +885,47 @@ We welcome contributions from the community! Here's how you can help:
 
 ---
 
+
+---
+
+## Content & AI Protection
+
+This repository is protected against AI-enabled copying on several layers:
+
+| Layer | Protection |
+|-------|------------|
+| **Visibility** | The repository is **private** on GitHub — private source is not crawled, indexed, or mirrored by AI trainers |
+| **Legal** | Proprietary license with an explicit **AI/ML training prohibition** (see [LICENSE](LICENSE) §3): no training, fine-tuning, dataset inclusion, retrieval indexing, or agent-based extraction |
+| **Crawler policy** | `robots.txt` denies all crawlers plus the known AI user-agents (GPTBot, CCBot, ClaudeBot, Google-Extended, PerplexityBot, Bytespider, …) |
+| **Machine-readable declaration** | `.well-known/ai.txt` declares `Training: n / Search: n / Commercial: n` in the emerging ai.txt format that AI data collectors are expected to honor |
+| **No implied consent** | [LICENSE](LICENSE) §4 states that access, cloning, or forking grants no rights and is not consent — only a written, signed agreement does |
+
+**Honest limits:** no in-repo measure can stop an AI that a user elected to
+give the code to. These measures (1) keep the source out of public crawls,
+(2) make unlicensed use a clear license violation, and (3) include the code
+in the widely-honored opt-outs AI crawlers respect.
+
+---
+
 ## License
 
-This project is licensed under the **MIT License**.
+**Proprietary — all rights reserved.** This project is *not* open source,
+despite any historical references to the contrary. See [LICENSE](LICENSE)
+for the full terms.
 
-```
-MIT License
+Short version:
 
-Copyright (c) 2024-2026 Aira AGI
+- Viewing and personal, non-commercial reference only.
+- **No** copying, modification, distribution, sublicensing, or commercial
+  use without prior written permission from the copyright holder.
+- **No AI/ML use of any kind**: the code, docs, or any portion may not be
+  used to train, fine-tune, evaluate, benchmark, or index any machine
+  learning or AI model, nor included in any dataset or corpus, nor
+  processed by crawlers/agents for retrieval or code-completion training.
+- Access, cloning, or forking grants no license and is not consent.
+- Violations terminate the license automatically and require deletion of
+  all copies, including copies incorporated into datasets or models.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-See [LICENSE](LICENSE) file for full details.
 
 ---
 
