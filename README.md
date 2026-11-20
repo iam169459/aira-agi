@@ -170,12 +170,19 @@ aira-agi/
 │       ├── webaudit.py          #   HTTP security-header audit, TLS expiry
 │       ├── logscan.py           #   IOC extraction, brute-force detection
 │       ├── recon.py             #   DNS lookup, reverse DNS, subdomain sweep
+│       ├── crack.py             #   authorized hash/credential auditing
+│       ├── wall.py              #   cyber-wall crack detection + TLS versions
+│       ├── webpwn.py            #   non-destructive injection probes
+│       ├── repair.py            #   finding-to-fix remediation engine
+│       ├── sentinel.py          #   live tamper/rogue-port/brute-force watch
+│       ├── engagement.py        #   attack + repair pipeline in one pass
 │       └── clitool.py           #   python -m modules.cyber_tools.clitool
 │
 ├── tests/                       # Test suites (pytest-compatible)
 │   ├── test_natural_speech.py   #   TTS/STT engine roundtrip & DTW invariants
 │   ├── test_transformer.py      #   fused attention, KV cache, legacy remap
 │   ├── test_cyber_tools.py      #   hashes, crypto, scanners, guard, log parsing
+│   ├── test_cyber_advanced.py   #   crack, wall, probe, repair, sentinel, engage
 │   └── test_agi_core.py         #   AGI core components
 │
 ├── purple_ai/                   # Purple AI Framework
@@ -570,6 +577,7 @@ Or run each suite standalone (also works under pytest):
 python tests/test_natural_speech.py   # TTS/STT engine: roundtrips, DTW, WAV I/O
 python tests/test_transformer.py      # fused attention, KV cache, legacy remap
 python tests/test_cyber_tools.py      # hashes, crypto, scanners, guard, logs
+python tests/test_cyber_advanced.py   # crack/wall/probe/repair/sentinel/engage
 python tests/test_agi_core.py         # AGI core components
 ```
 
@@ -682,7 +690,28 @@ python -m modules.cyber_tools.clitool audit http://localhost:8080
 Tools included: digests & HMAC, hash-family identification, password strength
 generator, file-integrity baselines, SHA-256-CTR + HMAC-SHA256 encryption with
 PBKDF2, concurrent port scanner, HTTP security-header audit, TLS expiry,
-brute-force/IOC log analysis, and DNS recon. Full guide:
+brute-force/IOC log analysis, and DNS recon.
+
+**Advanced (v2)** — hack *and* repair together:
+
+- **Cyber-wall crack detection** (`wall.py`): dangerous-service exposure,
+  TLS-version downgrade checks, header hygiene → a single 0–100 wall score
+  plus the exact cracks an attacker would use.
+- **Authorized credential auditing** (`crack.py`): dictionary + mutation-rule
+  hash auditing (md5/sha1/sha256, salted PBKDF2) — offline only.
+- **Injection probes** (`webpwn.py`): non-destructive reflected-XSS and
+  SQL-error detection on endpoints you are authorized to test.
+- **Repair engine** (`repair.py`): turns every finding into concrete fixes
+  (firewall rules, TLS config, header snippets, credential rotation), with
+  dry-run/confirm semantics for local permission hardening.
+- **Sentinel** (`sentinel.py`): continuous tamper + rogue-listener +
+  brute-force watch that reports breaches as they happen.
+- **Engagement console** (`engagement.py`): `run_engagement(target)` runs the
+  full attack pipeline and hands back a prioritized repair plan.
+
+Deliberately excluded: DoS/DDoS/flooding, exploit payloads, exfiltration —
+indiscriminate attack tools with no authorized-testing value. Every active
+tool still requires `authorized=True` for non-local targets. Full guide:
 [docs/CYBER_TOOLS.md](docs/CYBER_TOOLS.md).
 
 ---
