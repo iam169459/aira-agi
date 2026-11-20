@@ -68,9 +68,16 @@ class EmotionAwareAI:
             "block_size": 512,
             "dropout": 0.1
         }
-        self.model = self._init_ai_model()
+        self._model = None
         
         print("AI system ready!")
+    
+    @property
+    def model(self):
+        """Lazily allocate the transformer on first use"""
+        if self._model is None:
+            self._model = self._init_ai_model()
+        return self._model
     
     def _init_ai_model(self):
         """Initialize the core AI model"""

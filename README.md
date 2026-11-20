@@ -707,6 +707,12 @@ Knowledge representation:
 - **Training**: ~1-2 steps/second on CPU, 10-50 steps/second on GPU
 - **Model Size**: Default transformer ~2-3M parameters (~10-15MB)
 
+### Transformer Optimizations
+- **Fused QKV attention**: all heads project through one `nn.Linear(n_embd, 3*n_embd)` instead of `3 × n_head` separate Linears; legacy per-head checkpoints are remapped automatically by `fuse_legacy_state_dict` in `ai_core/model.py`.
+- **KV-cached generation**: `EmotionAwareGPT.generate` decodes incrementally with a per-layer key/value cache — ~4.4× faster in the reference benchmark (100 tokens, 3.7M-param model, CPU) — and is exact while `prompt + new tokens <= block_size`, falling back to full recomputation for longer outputs.
+- **Shared model code**: `train.py` and `generate.py` import the model from `ai_core/model.py` instead of carrying duplicate copies.
+- **Lazy model init**: `EmotionAwareAI` defers transformer allocation until first use instead of building a GPT-2-sized model at startup.
+
 ### Optimization Tips
 - Use GPU acceleration for training and generation
 - Reduce `BLOCK_SIZE` if memory constrained
