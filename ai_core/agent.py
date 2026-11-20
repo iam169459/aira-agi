@@ -6,6 +6,7 @@ sampling (top-k / nucleus / repetition penalty). When no checkpoint is
 available it degrades gracefully to the mood-aware template voice, so
 the agent always answers.
 """
+import json
 import os
 from collections import deque
 
@@ -34,10 +35,12 @@ EMOTION_IDS = {name: i for i, name in enumerate(
 class AiraAgent:
     """Model-backed conversational agent with memory and mood."""
 
-    def __init__(self, checkpoint=None, memory_turns=20, device="cpu"):
+    def __init__(self, checkpoint=None, memory_turns=20, device="cpu",
+                 memory_path=None):
         self.checkpoint_path = checkpoint or DEFAULT_CHECKPOINT
         self.device = device
         self.memory = deque(maxlen=memory_turns)
+        self.memory_path = memory_path
         self.emotion = "neutral"
         self.generation = {
             "temperature": 0.85,
@@ -50,12 +53,35 @@ class AiraAgent:
         self.stoi = {}
         self.itos = {}
         self._load_checkpoint()
+        self._load_memory()
 
     def _load_checkpoint(self):
         path = self.checkpoint_path
         if not path or not os.path.exists(path):
             return
         self.model, self.stoi, self.itos = load_model(path, self.device)
+
+    def _load_memory(self):
+        if not self.memory_path or not os.path.exists(self.memory_path):
+            return
+        try:
+            with open(self.memory_path, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line:
+                        self.memory.append(json.loads(line))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    def save_memory(self):
+        """Persist the conversation memory as JSONL for restarts."""
+        if not self.memory_path:
+            return None
+        os.makedirs(os.path.dirname(self.memory_path) or ".", exist_ok=True)
+        with open(self.memory_path, "w", encoding="utf-8") as fh:
+            for turn in self.memory:
+                fh.write(json.dumps(turn, ensure_ascii=False) + "\n")
+        return self.memory_path
 
     @property
     def memory_turns(self):
@@ -101,6 +127,8 @@ class AiraAgent:
         else:
             response = self._model_response(text, emotion, max_tokens)
         self.remember("aira", response)
+        if self.memory_path:
+            self.save_memory()
         return response
 
     def _model_response(self, text, emotion, max_tokens):

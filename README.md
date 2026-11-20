@@ -561,6 +561,7 @@ Or run each suite standalone (also works under pytest):
 python tests/test_natural_speech.py   # TTS/STT engine: roundtrips, DTW, WAV I/O
 python tests/test_transformer.py      # fused attention, KV cache, legacy remap
 python tests/test_agi_power.py        # sampling controls, agent brain, always-on daemon
+python tests/test_agi_integration.py  # unified brain wiring, LLM bridge, memory persistence
 python tests/test_agi_core.py         # AGI core components
 ```
 
@@ -722,8 +723,11 @@ Knowledge representation:
 - All three compose and stay exact on the KV-cached path; the phase-verified cache-vs-recompute token equality holds under the same RNG state when controls are identical.
 
 ### Agent Brain & Always-On Mode
-- **`ai_core/agent.py` — `AiraAgent`**: loads a `train.py` checkpoint and answers with real model generation (top-k / top-p / repetition penalty, mood-conditioned via `emotion_id`), with bounded conversation memory (`recall`, `remember`) threaded into the prompt context. A coherence gate falls back to the mood-aware template voice when no checkpoint exists or output looks like noise — the agent always answers.
+- **`ai_core/agent.py` — `AiraAgent`**: the single conversation brain for the whole system — loads a `train.py` checkpoint and answers with real model generation (top-k / top-p / repetition penalty, mood-conditioned via `emotion_id`), with bounded conversation memory (`recall`, `remember`) threaded into the prompt context, optionally persisted as JSONL (`memory_path`) so conversations survive restarts. A coherence gate falls back to the mood-aware template voice when no checkpoint exists or output looks like noise — the agent always answers.
+- **One brain everywhere**: `ai_core/main.py` (`EmotionAwareAI.generate_response`), `purple_ai/core/brain.py` (`PurpleAgent.respond`), and `agi_core` (`AGIIntegration` generic chat, `TransformerIntegration` text API) all delegate to the same `AiraAgent` — no stub or duplicated model code left.
 - **`ai_core/daemon.py` — `AiraDaemon`**: keeps Aira always active. Registered duties (`heartbeat`, `health_check`, plus anything you `register`) run on their own intervals; a crashing duty is isolated, backed off, and disabled after 3 failures instead of taking the loop down; every cycle appends JSONL to `.aira/agent_log.jsonl`; SIGINT/SIGTERM shut down gracefully.
+
+The daemon also registers a `memory_persist` duty (every 30s) when its brain has `memory_path` set, so an always-active Aira keeps its conversation memory durable.
 
 ```bash
 python -m ai_core.daemon --once            # one supervised cycle

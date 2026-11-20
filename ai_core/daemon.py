@@ -69,6 +69,12 @@ class AiraDaemon:
     def _register_builtins(self):
         self.register("heartbeat", self._heartbeat, 60.0)
         self.register("health_check", self._health_check, 120.0)
+        if getattr(self.agent, "memory_path", None):
+            self.register("memory_persist", self._persist_memory, 30.0)
+
+    def _persist_memory(self, _now):
+        if self.agent is not None and hasattr(self.agent, "save_memory"):
+            self.agent.save_memory()
 
     def _heartbeat(self, _now):
         self.log_event("heartbeat", cycles=self.cycles,
