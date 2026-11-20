@@ -189,7 +189,16 @@ aira-agi/
 │   ├── test_cyber_tools.py      #   hashes, crypto, scanners, guard, log parsing
 │   ├── test_cyber_advanced.py   #   crack, wall, probe, repair, sentinel, engage
 │   ├── test_cyber_professional.py  # fingerprint, dir probe, banners, ciphers, reports
-│   └── test_agi_core.py         #   AGI core components
+│   ├── test_agi_core.py         #   AGI core components
+│   ├── test_agi_power.py        #   sampling, agent brain, daemon
+│   ├── test_agi_integration.py  #   unified brain wiring, memory persistence
+│   └── ...
+│
+├── docs/                        # Guides & examples
+│   ├── NATURAL_SPEECH.md        #   from-scratch TTS/STT engine guide
+│   ├── CYBER_TOOLS.md           #   cybersecurity toolkit guide
+│   ├── EXAMPLE_PENTEST_REPORT.md #  sample severity-ranked pentest report
+│   └── AGI_IMPLEMENTATION.md    #   AGI architecture & training notes
 │
 ├── purple_ai/                   # Purple AI Framework
 │   ├── __init__.py
