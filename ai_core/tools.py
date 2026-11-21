@@ -21,6 +21,10 @@ import os
 import re
 import time
 
+from ai_core.selfedit import SelfEditError, SelfEditor
+
+_SPLIT_RE = re.compile(r"\s*>>>\s*")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_NOTES_PATH = os.path.join(ROOT, "data", "aira_notes.jsonl")
 
@@ -169,6 +173,74 @@ class ToolRegistry:
             [r"(?:read|open)(?:\s+(?:the|this))?\s+file\s+(?P<arg>.+)"],
             self._read_file,
         ))
+        self.editors = {}
+        self.register(Tool(
+            "self_edit",
+            "stage a rewrite of Aira's own source; "
+            "format: rewrite <file> | old code >>> new code",
+            [r"rewrite\s+(?:the\s+)?(?:file\s+)?(?P<arg>.+)"],
+            self._selfedit_request,
+        ))
+        self.register(Tool(
+            "self_edit_apply",
+            "apply a staged rewrite proposal",
+            [r"apply(?:\s+proposal)?\s*#?\s*(?P<arg>\d+)"],
+            self._selfedit_apply,
+        ))
+        self.register(Tool(
+            "self_edit_cancel",
+            "cancel a staged rewrite proposal",
+            [r"cancel(?:\s+proposal)?\s*#?\s*(?P<arg>\d+)"],
+            self._selfedit_cancel,
+        ))
+        self.register(Tool(
+            "self_edit_pending",
+            "list staged rewrite proposals",
+            [r"(?:staged|pending|open)\s+(?:rewrite\s+)?(?:proposals|"
+             r"edits)|(?:list|show)\s+(?:my\s+)?(?:rewrites|proposals)"],
+            self._selfedit_pending,
+        ))
+
+    def _editor(self):
+        if self.root not in self.editors:
+            self.editors[self.root] = SelfEditor(
+                root=self.root,
+                backup_dir=os.path.join(self.root, "data", "self_edits",
+                                        "backup"),
+                audit_path=os.path.join(self.root, "data", "self_edits",
+                                        "audit.jsonl"),
+            )
+        return self.editors[self.root]
+
+    def _selfedit_request(self, match):
+        arg = (match.groupdict().get("arg") or "").strip()
+        if "|" not in arg or ">>>" not in arg.split("|", 1)[1]:
+            return ("Give me a rewrite as: rewrite <file> | "
+                    "old code >>> new code")
+        rel, _, rest = arg.partition("|")
+        parts = _SPLIT_RE.split(rest.strip(), maxsplit=1)
+        old, new = parts[0], parts[1]
+        try:
+            return self._editor().propose(rel, old, new)
+        except SelfEditError as exc:
+            return f"Rewrite refused: {exc}"
+
+    def _selfedit_apply(self, match):
+        proposal_id = (match.groupdict().get("arg") or "").strip()
+        try:
+            return self._editor().confirm(proposal_id)
+        except SelfEditError as exc:
+            return f"Rewrite not applied: {exc}"
+
+    def _selfedit_cancel(self, match):
+        proposal_id = (match.groupdict().get("arg") or "").strip()
+        try:
+            return self._editor().cancel(proposal_id)
+        except SelfEditError as exc:
+            return f"Not cancelled: {exc}"
+
+    def _selfedit_pending(self, match=None):
+        return self._editor().pending()
 
     # ---- notes ------------------------------------------------------
 
