@@ -30,6 +30,11 @@ PRESETS = {
         "batch_size": 8, "max_steps": 4000, "eval_every": 500,
         "lr": 3e-4, "n_embd": 320, "n_head": 8, "n_layer": 8,
     },
+    "titan": {
+        "data": "beast_corpus.txt", "block_size": 512,
+        "batch_size": 8, "max_steps": 8000, "eval_every": 500,
+        "lr": 3e-4, "n_embd": 512, "n_head": 8, "n_layer": 12,
+    },
 }
 DROPOUT = 0.1
 

@@ -13,6 +13,7 @@ from collections import deque
 import torch
 
 from ai_core.model import EmotionAwareGPT, fuse_legacy_state_dict
+from ai_core.tools import default_registry
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CHECKPOINT = os.path.join(ROOT, "tiny_model.pt")
@@ -104,11 +105,12 @@ class AiraAgent:
     """Model-backed conversational agent with memory and mood."""
 
     def __init__(self, checkpoint=None, memory_turns=20, device="cpu",
-                 memory_path=None):
+                 memory_path=None, registry=None):
         self.checkpoint_path = checkpoint or DEFAULT_CHECKPOINT
         self.device = device
         self.memory = deque(maxlen=memory_turns)
         self.memory_path = memory_path
+        self.tools = registry if registry is not None else default_registry
         self.emotion = "neutral"
         self.generation = dict(SAMPLING_PRESETS["neutral"],
                                max_tokens=160)
@@ -191,16 +193,24 @@ class AiraAgent:
                                    max_tokens=self.generation["max_tokens"])
         self.remember("user", text)
         if self.powered_by_model:
-            response = self._intent_response(text) \
+            response = self._tool_response(text) \
+                or self._intent_response(text) \
                 or self._model_response(text, emotion, max_tokens) \
                 or self._template_response(text, emotion)
         else:
-            response = self._intent_response(text) \
+            response = self._tool_response(text) \
+                or self._intent_response(text) \
                 or self._template_response(text, emotion)
         self.remember("aira", response)
         if self.memory_path:
             self.save_memory()
         return response
+
+    def _tool_response(self, text):
+        """Tool loop: run any matching skills and ground the reply in
+        their output. Aira answers from real computation before the
+        model, mirroring Anthropic-style function calling."""
+        return self.tools.respond(text)
 
     @staticmethod
     def _infer_emotion(text):
