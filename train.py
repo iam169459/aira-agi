@@ -135,6 +135,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     device = ("cuda" if torch.cuda.is_available()
               else "mps" if torch.backends.mps.is_available() else "cpu")
     use_amp = device == "cuda"
+    ndev = torch.cuda.device_count() if use_amp else 0
     if use_amp:
         amp_dtype = (torch.bfloat16 if torch.cuda.is_bf16_supported()
                      else torch.float16)
@@ -143,7 +144,11 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     else:
         amp_dtype = torch.float32
         scaler = None
-    print("Device:", device, "| AMP:", amp_dtype if use_amp else "off")
+    if ndev > 1:
+        BATCH_SIZE = BATCH_SIZE * ndev
+    print("Device:", device,
+          f"| GPUs: {ndev} (DataParallel)" if ndev > 1 else "",
+          "| AMP:", amp_dtype if use_amp else "off")
     print("Vocabulary size:", len(chars))
     print("Characters:", len(text))
 
@@ -163,8 +168,17 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         "dropout": DROPOUT,
     }
     model = EmotionAwareGPT(len(chars), config).to(device)
+    if use_amp:
+        _fp_forward = model.forward
+        def amp_forward(*fwd_args, **fwd_kwargs):
+            with torch.autocast("cuda", dtype=amp_dtype):
+                return _fp_forward(*fwd_args, **fwd_kwargs)
+        model.forward = amp_forward
+    if ndev > 1:
+        model = torch.nn.DataParallel(model)
     print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+    net = model.module if isinstance(model, torch.nn.DataParallel) else model
+    optimizer = torch.optim.AdamW(net.parameters(), lr=LEARNING_RATE)
 
 
     @torch.no_grad()
@@ -175,9 +189,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
             losses = []
             for _ in range(5):
                 x, y = get_batch(source)
-                with torch.autocast(device_type=device,
-                                    dtype=amp_dtype, enabled=use_amp):
-                    _, loss = model(x, targets=y)
+                _, loss = model(x, targets=y)
                 losses.append(loss.item())
             results[name] = round(sum(losses) / len(losses), 4)
         model.train()
@@ -188,9 +200,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     step = 0
     for micro in range(steps * GRAD_ACCUM):
         x, y = get_batch(train_data)
-        with torch.autocast(device_type=device,
-                            dtype=amp_dtype, enabled=use_amp):
-            _, loss = model(x, targets=y)
+        _, loss = model(x, targets=y)
         loss = loss / GRAD_ACCUM
         if scaler is not None:
             scaler.scale(loss).backward()
@@ -214,7 +224,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     print("Final loss:", estimate_loss())
     torch.save(
         {
-            "model": model.cpu().state_dict(),
+            "model": net.cpu().state_dict(),
             "chars": chars,
             "config": config,
         },

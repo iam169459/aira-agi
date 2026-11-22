@@ -16,9 +16,11 @@ it is still 100% your own architecture, initialized and trained from zero.
 | `titan` | 16 × 1024 (16)| 512 | 202M  | ~771 MB | ~7 GB (T4 fine) |
 
 All of `xl`/`xxl`/`titan` fit comfortably on **one** of Kaggle's free
-T4s (16 GB), so the second T4 stays free and the 30 h/week quota is the
-only real limit. Rough wall-clock per 1k optimizer steps on a T4:
-`xl` ~40 min, `xxl` ~2.5 h, `titan` ~6 h.
+T4s (16 GB), and `train.py` uses **both** T4s automatically via
+`DataParallel` when two are attached (effective batch per optimizer
+step is preserved — the micro-batch is split across GPUs). Rough
+wall-clock per 1k optimizer steps on T4 x2: `xl` ~25 min, `xxl` ~1.5 h,
+`titan` ~3.5 h.
 
 ## How to run on Kaggle
 
@@ -45,6 +47,12 @@ python train.py --preset titan --out titan_model.pt
   CPU/MPS — it would never have used a Kaggle GPU).
 - Mixed precision on CUDA: bf16 on A100/T4-with-bf16 kernels,
   fp16 + `GradScaler` on T4. Cuts VRAM ~2× and speeds up T4 ~2-3×.
+  The autocast lives inside the model's forward, because `DataParallel`
+  worker threads do not inherit thread-local autocast state.
+- Multi-GPU: with 2+ CUDA GPUs the model is wrapped in
+  `DataParallel` and the micro-batch is scaled by device count, so
+  checkpoints stay identical in format (`module.` prefixes are
+  stripped before saving).
 - Gradient accumulation (`grad_accum` per preset) so effective batch
   size scales without more VRAM — `titan` trains at an effective
   batch of 32 sequences × 512 context.
