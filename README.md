@@ -42,7 +42,9 @@ Train her (start small, go up):
 ```bash
 python train.py --preset tiny      # minutes
 python train.py --preset base
-python train.py --preset beast     # her full-size brain
+python train.py --preset beast     # her full-size brain on CPU
+python train.py --preset xxl       # ~86M params, needs a GPU
+python train.py --preset titan     # ~200M params — see docs/KAGGLE_TRAINING.md for free Kaggle GPUs
 ```
 
 ---
