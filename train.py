@@ -13,7 +13,8 @@ DATA_FILE = os.path.join(ROOT, "data", "code_corpus.txt")
 CHECKPOINT = os.path.join(ROOT, "tiny_model.pt")
 
 # Training profiles. "tiny" is the original starter; "beast" is several
-# sizes up on a combined conversation + code corpus.
+# sizes up. "xl", "xxl" and "titan" scale the same architecture up to
+# Kaggle-GPU sizes and all train on the combined beast corpus.
 PRESETS = {
     "tiny": {
         "data": "code_corpus.txt", "block_size": 64,
@@ -30,10 +31,23 @@ PRESETS = {
         "batch_size": 8, "max_steps": 4000, "eval_every": 500,
         "lr": 3e-4, "n_embd": 320, "n_head": 8, "n_layer": 8,
     },
+    "xl": {
+        "data": "beast_corpus.txt", "block_size": 384,
+        "batch_size": 16, "grad_accum": 1, "max_steps": 10000,
+        "eval_every": 500,
+        "lr": 3e-4, "n_embd": 512, "n_head": 8, "n_layer": 10,
+    },
+    "xxl": {
+        "data": "beast_corpus.txt", "block_size": 512,
+        "batch_size": 16, "grad_accum": 2, "max_steps": 20000,
+        "eval_every": 1000,
+        "lr": 2.5e-4, "n_embd": 768, "n_head": 12, "n_layer": 12,
+    },
     "titan": {
         "data": "beast_corpus.txt", "block_size": 512,
-        "batch_size": 8, "max_steps": 8000, "eval_every": 500,
-        "lr": 3e-4, "n_embd": 512, "n_head": 8, "n_layer": 12,
+        "batch_size": 8, "grad_accum": 4, "max_steps": 30000,
+        "eval_every": 1000,
+        "lr": 2.5e-4, "n_embd": 1024, "n_head": 16, "n_layer": 16,
     },
 }
 DROPOUT = 0.1
@@ -77,6 +91,8 @@ def main():
 
 def train(preset="tiny", steps=None, data_file=None, out_path=None,
           root=ROOT):
+    """Train EmotionAwareGPT. ``steps`` counts optimizer steps; each one
+    consumes ``grad_accum`` micro-batches."""
     cfg = dict(PRESETS[preset])
     data_file = data_file or cfg["data"]
     if data_file == "beast_corpus.txt" and not os.path.exists(
@@ -87,6 +103,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     steps = steps or cfg["max_steps"]
     BLOCK_SIZE = cfg["block_size"]
     BATCH_SIZE = cfg["batch_size"]
+    GRAD_ACCUM = cfg.get("grad_accum", 1)
     EVAL_EVERY = cfg["eval_every"]
     LEARNING_RATE = cfg["lr"]
     N_EMBD = cfg["n_embd"]
@@ -115,8 +132,23 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     if len(train_data) <= BLOCK_SIZE or len(val_data) <= BLOCK_SIZE:
         raise ValueError("Add more text so both splits exceed BLOCK_SIZE.")
 
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
-    print("Device:", device)
+    device = ("cuda" if torch.cuda.is_available()
+              else "mps" if torch.backends.mps.is_available() else "cpu")
+    use_amp = device == "cuda"
+    ndev = torch.cuda.device_count() if use_amp else 0
+    if use_amp:
+        amp_dtype = (torch.bfloat16 if torch.cuda.is_bf16_supported()
+                     else torch.float16)
+        scaler = torch.amp.GradScaler(
+            "cuda", enabled=amp_dtype == torch.float16)
+    else:
+        amp_dtype = torch.float32
+        scaler = None
+    if ndev > 1:
+        BATCH_SIZE = BATCH_SIZE * ndev
+    print("Device:", device,
+          f"| GPUs: {ndev} (DataParallel)" if ndev > 1 else "",
+          "| AMP:", amp_dtype if use_amp else "off")
     print("Vocabulary size:", len(chars))
     print("Characters:", len(text))
 
@@ -136,8 +168,17 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         "dropout": DROPOUT,
     }
     model = EmotionAwareGPT(len(chars), config).to(device)
+    if use_amp:
+        _fp_forward = model.forward
+        def amp_forward(*fwd_args, **fwd_kwargs):
+            with torch.autocast("cuda", dtype=amp_dtype):
+                return _fp_forward(*fwd_args, **fwd_kwargs)
+        model.forward = amp_forward
+    if ndev > 1:
+        model = torch.nn.DataParallel(model)
     print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+    net = model.module if isinstance(model, torch.nn.DataParallel) else model
+    optimizer = torch.optim.AdamW(net.parameters(), lr=LEARNING_RATE)
 
 
     @torch.no_grad()
@@ -156,20 +197,34 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
 
 
     model.train()
-    for step in range(steps):
-        if step % EVAL_EVERY == 0:
-            print(f"step {step}: {estimate_loss()}")
+    step = 0
+    for micro in range(steps * GRAD_ACCUM):
         x, y = get_batch(train_data)
         _, loss = model(x, targets=y)
+        loss = loss / GRAD_ACCUM
+        if scaler is not None:
+            scaler.scale(loss).backward()
+        else:
+            loss.backward()
+        if (micro + 1) % GRAD_ACCUM:
+            continue
+        if step % EVAL_EVERY == 0:
+            print(f"step {step}: {estimate_loss()}")
+        if scaler is not None:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
         optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
+        step += 1
 
     print("Final loss:", estimate_loss())
     torch.save(
         {
-            "model": model.cpu().state_dict(),
+            "model": net.cpu().state_dict(),
             "chars": chars,
             "config": config,
         },
