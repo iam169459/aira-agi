@@ -78,15 +78,35 @@ Aira's security tools only touch targets **you own or have permission to test**.
 
 ## Testing
 
-The whole suite is green and covers the voice engine, the transformer,
-the agent brain, the tool skills, the daemon, cybersecurity tooling,
-and developer skills:
+The whole suite is green — **552 checks across 13 suites, 0 failures** —
+covering the voice engine, the transformer, the agent brain, the tool
+skills, the daemon, cybersecurity tooling, developer skills, and the
+two-way interruption system:
+
+| Suite | Checks | Suite | Checks |
+|---|---:|---|---:|
+| test_transformer | 18 | test_agi_power | 28 |
+| test_aira_tools | 21 | test_agi_integration | 18 |
+| test_more_tools | 31 | test_cyber_advanced | 38 |
+| test_selfedit | 28 | test_cyber_professional | 50 |
+| test_beast_mode | 92 | test_natural_speech | 42 |
+| test_dev_skills | 55 | test_interrupt | 83 |
+| test_cyber_tools | 48 | | |
 
 ```bash
 python -m pytest tests/ -q        # if you have pytest
 python -m tests.test_transformer  # or run any suite directly
 python -m tests.test_more_tools
 ```
+
+### How Aira compares
+
+Full head-to-head with other AI models — sizes, architectures, what she
+can and cannot do, and an honest verdict — lives in
+[`comparison.md`](comparison.md). Short version: frontier models are
+smarter by orders of magnitude (they are rented APIs trained on
+trillions of tokens); Aira is the one that is fully yours — offline,
+emotion-aware, tool-using, self-maintaining, and tested end to end.
 
 ## Updating
 
@@ -111,6 +131,7 @@ python -m ai_core.updater
 | [`CYBER_TOOLS.md`](docs/CYBER_TOOLS.md) · [`EXAMPLE_PENTEST_REPORT.md`](docs/EXAMPLE_PENTEST_REPORT.md) | the security toolkit |
 | [`DEV_SKILLS.md`](docs/DEV_SKILLS.md) | code audit, dependency hygiene, self-edit |
 | [`AGI_IMPLEMENTATION.md`](docs/AGI_IMPLEMENTATION.md) | agent architecture |
+| [`comparison.md`](comparison.md) | test results + how Aira compares to other AI models |
 | [`GIRL_PERSONA_GUIDE.md`](docs/GIRL_PERSONA_GUIDE.md) · [`GIRL_VOICE_SUMMARY.md`](docs/GIRL_VOICE_SUMMARY.md) | persona & voice tuning |
 
 ---
