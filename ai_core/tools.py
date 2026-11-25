@@ -200,6 +200,8 @@ class ToolRegistry:
              r"edits)|(?:list|show)\s+(?:my\s+)?(?:rewrites|proposals)"],
             self._selfedit_pending,
         ))
+        from ai_core import more_tools
+        more_tools.register(self, Tool)
 
     def _editor(self):
         if self.root not in self.editors:
