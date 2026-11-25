@@ -43,7 +43,9 @@ matching with no substring leaks).
 
 ## 2. Aira's own model ladder (measured, not estimated)
 
-`EmotionAwareGPT`, char-level (vocab ≈ 102 chars), param counts measured live:
+`EmotionAwareGPT`, char-level (vocab ≈ 102 chars) or byte-level BPE
+(`--tokenizer bpe`, byte-level, merges learned from our own corpus at
+train time), param counts measured live:
 
 | Preset | Params | Context | Notes |
 |---|---:|---:|---|
@@ -54,7 +56,8 @@ matching with no substring leaks).
 | xxl | 85,584,486 | 512 chars | Kaggle GPU + gradient accumulation |
 | titan | 202,233,958 | 512 chars | Kaggle T4×2 with AMP + grad-accum |
 
-Training corpus today: ~0.42 MB of text (`data/beast_corpus.txt`), char-level.
+Training corpus today: ~0.42 MB of text (`data/beast_corpus.txt`); tokenized
+char-level by default or byte-level BPE with `--tokenizer bpe`.
 
 ---
 
@@ -85,18 +88,21 @@ better essays.
 
 | Feature | Aira (EmotionAwareGPT) | GPT-2/3, Llama, Mistral |
 |---|---|---|
-| Tokenizer | char-level (~102 chars) | BPE subwords (32K–256K vocab) |
+| Tokenizer | char-level, **or** byte-level BPE (own corpus, 512 vocab — measured 2.53 chars/token vs 1.0 char-level, i.e. 2.5× more text per context window) | BPE subwords (32K–256K vocab) |
 | Emotion conditioning | ✅ learned embedding, 8 emotions | ❌ (added later via Chat-tuning) |
 | Positional encoding | learned embeddings | learned / RoPE |
 | Attention | fused QKV, causal, pre-LN | same family of tricks |
 | Context window | 64–512 **chars** | 4K–1M **tokens** |
 | Training loop | AMP, grad-accum, DataParallel, auto-resume | industry-standard stacks |
 
-Two real architectural gaps versus the big models — both fixable, both on
-the roadmap before pushing past titan: **subword tokenization** (BPE) —
-char-level wastes context on multi-byte words; and **positional scaling /
-RoPE** — learned position embeddings hard-cap the context at
-`block_size`.
+One of the two old architectural gaps is now closed: **byte-level BPE
+tokenization** ships built-in (`python train.py --preset xxl --tokenizer
+bpe --vocab-size 4096`), learned purely from our own corpus — no
+pretrained tokenizer files, no borrowed vocabularies. That packs ~2–3×
+more text into the same context window and, because the base alphabet
+is all 256 bytes, no input can ever fail to encode. The remaining gap
+is **positional scaling / RoPE** — learned position embeddings still
+hard-cap the context at `block_size`.
 
 ### 3.3 What Aira does that the big models don't ship
 
@@ -133,7 +139,7 @@ RoPE** — learned position embeddings hard-cap the context at
 | Is Aira smarter than GPT-4 / Claude / Gemini? | No — not in the same weight class, by a factor of ~1000× in params and ~10⁹× in data. Those are API rentals anyway. |
 | Is Aira smarter than a random 10M toy model? | Yes — she has the emotion pipeline, tools, memory, self-edit, self-update, a security toolkit, and a real voice, none of which a bare checkpoint gives you. |
 | Is Aira *yours*? | ✅ Yes — fully. Source, voice, data, weights, improvement path. That is the product. |
-| Can she keep growing? | ✅ `tiny → base → beast → xl → xxl → titan` measured ladders; next steps: BPE tokenizer, RoPE, corpus growth, then 1B+ on rented free GPU time. |
+| Can she keep growing? | ✅ `tiny → base → beast → xl → xxl → titan` measured ladders; byte-level BPE already in; next steps: RoPE, corpus growth, then 1B+ on rented free GPU time. |
 
 **Bottom line:** comparing Aira to frontier models is comparing a garden to a
 supermarket. The supermarket has more shelves; the garden is yours, it grows,

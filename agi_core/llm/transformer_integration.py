@@ -19,7 +19,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from ai_core.model import EmotionAwareGPT, sampling_probs
+from ai_core.model import EmotionAwareGPT
 from ai_core.agent import load_model
 
 DEFAULT_CHECKPOINT = os.path.join(project_root, "tiny_model.pt")
@@ -48,6 +48,7 @@ class TransformerIntegration:
         self.model_path = model_path or DEFAULT_CHECKPOINT
         self.device = device or _pick_device()
         self.model: Optional[EmotionAwareGPT] = None
+        self.codec = None
         self.chars: List[str] = []
         self.stoi: Dict[str, int] = {}
         self.itos: Dict[int, str] = {}
@@ -59,10 +60,15 @@ class TransformerIntegration:
         try:
             if not os.path.exists(self.model_path):
                 return False
-            self.model, self.stoi, self.itos = load_model(
+            self.model, self.codec = load_model(
                 self.model_path, self.device)
-            self.chars = [self.itos[i] for i in sorted(self.itos)]
-            self.vocab_size = len(self.chars)
+            self.stoi = dict(getattr(self.codec, "stoi", {}))
+            self.itos = dict(getattr(self.codec, "itos", {}))
+            self.chars = [self.itos[i] for i in sorted(self.itos)] \
+                if self.itos else [
+                    self.codec.build_vocab()[i].decode("utf-8", "replace")
+                    for i in range(self.codec.vocab_size)]
+            self.vocab_size = self.codec.vocab_size
             self.block_size = self.model.block_size
             print(f"Loaded transformer model from {self.model_path} "
                   f"(vocab {self.vocab_size}, block {self.block_size}, "
@@ -77,9 +83,12 @@ class TransformerIntegration:
         return self.model is not None and self.vocab_size > 0
 
     def encode(self, text: str) -> torch.Tensor:
-        if not self.stoi:
+        if self.codec is None:
             raise ValueError("Model not loaded.")
-        tokens = [self.stoi.get(c, 0) for c in text]
+        if self.codec.type_name == "char":
+            tokens = [self.stoi.get(c, 0) for c in text]
+        else:
+            tokens = self.codec.encode(text)   # BPE never fails on input
         return torch.tensor(tokens, dtype=torch.long, device=self.device)
 
     def decode(self, tokens: Union[torch.Tensor, List[int]]) -> str:
@@ -87,7 +96,7 @@ class TransformerIntegration:
             tokens = torch.tensor(tokens, dtype=torch.long)
         if tokens.dim() > 1:
             return [self.decode(t) for t in tokens]
-        return ''.join(self.itos.get(int(t), '?') for t in tokens.tolist())
+        return self.codec.decode([int(t) for t in tokens.tolist()])
 
     @torch.no_grad()
     def generate(self, prompt: str, max_tokens: int = 300,

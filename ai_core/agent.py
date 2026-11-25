@@ -13,6 +13,7 @@ from collections import deque
 import torch
 
 from ai_core.model import EmotionAwareGPT, fuse_legacy_state_dict
+from ai_core.tokenizer import codec_from_checkpoint
 from ai_core.tools import default_registry
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -119,8 +120,7 @@ class AiraAgent:
         self.generation = dict(SAMPLING_PRESETS["neutral"],
                                max_tokens=160)
         self.model = None
-        self.stoi = {}
-        self.itos = {}
+        self.codec = None
         self._load_checkpoint()
         self._load_memory()
 
@@ -128,7 +128,7 @@ class AiraAgent:
         path = self.checkpoint_path
         if not path or not os.path.exists(path):
             return
-        self.model, self.stoi, self.itos = load_model(path, self.device)
+        self.model, self.codec = load_model(path, self.device)
 
     def _load_memory(self):
         if not self.memory_path or not os.path.exists(self.memory_path):
@@ -171,16 +171,17 @@ class AiraAgent:
         return list(self.memory)[-int(turns):]
 
     def _encode(self, text):
-        unknown = set(text) - set(self.stoi)
-        if unknown:
-            text = "".join(c for c in text if c in self.stoi)
-            if not text:
-                return None
-        return torch.tensor([[self.stoi[c] for c in text]],
-                            dtype=torch.long, device=self.device)
+        if self.codec is None:
+            return None
+        ids = self.codec.encode(text)
+        if not ids:
+            return None
+        return torch.tensor([ids], dtype=torch.long, device=self.device)
 
     def _decode(self, ids):
-        return "".join(self.itos[i] for i in ids)
+        if self.codec is None:
+            return ""
+        return self.codec.decode([int(i) for i in ids])
 
     def think(self, text, emotion=None, max_tokens=None):
         """Answer `text` using the model, mood-conditioned.
@@ -323,17 +324,21 @@ class AiraAgent:
 
 
 def load_model(path, device="cpu"):
-    """Load an EmotionAwareGPT checkpoint saved by train.py."""
+    """Load an EmotionAwareGPT checkpoint saved by train.py.
+
+    Returns ``(model, codec)`` where codec is a CharCodec (legacy
+    character-level checkpoints) or a BPETokenizer (byte-level BPE
+    checkpoints). The codec carries ``encode`` / ``decode`` /
+    ``vocab_size`` so callers never re-derive the vocabulary.
+    """
     checkpoint = torch.load(path, map_location="cpu",
                             weights_only=False)
-    chars = checkpoint["chars"]
-    stoi = {c: i for i, c in enumerate(chars)}
-    itos = {i: c for i, c in enumerate(chars)}
-    model = EmotionAwareGPT(len(chars), checkpoint["config"])
+    codec = codec_from_checkpoint(checkpoint)
+    model = EmotionAwareGPT(codec.vocab_size, checkpoint["config"])
     state = checkpoint["model"]
     try:
         model.load_state_dict(state)
     except RuntimeError:
         model.load_state_dict(fuse_legacy_state_dict(state))
     model = model.to(device).eval()
-    return model, stoi, itos
+    return model, codec

@@ -5,6 +5,7 @@ import torch
 from torch.nn import functional as F
 
 from ai_core.model import EmotionAwareGPT, fuse_legacy_state_dict
+from ai_core.tokenizer import (BPETokenizer, CharCodec, tokenizer_state)
 
 torch.manual_seed(42)
 
@@ -93,19 +94,32 @@ def main():
                         help="discard the existing checkpoint and retrain "
                              "from scratch (needed when deliberately "
                              "switching to a different preset size)")
+    parser.add_argument("--tokenizer", default="char",
+                        choices=("char", "bpe"),
+                        help="char = one character per token (default, "
+                             "compatible with old checkpoints); bpe = "
+                             "byte-level Byte Pair Encoding learned from "
+                             "the corpus (packs 2-4x more text into the "
+                             "same context window)")
+    parser.add_argument("--vocab-size", type=int, default=512,
+                        help="BPE vocabulary size (merges = vocab-size - "
+                             "256); ignored with --tokenizer char")
     args = parser.parse_args()
     train(args.preset, steps=args.steps, data_file=args.data,
-          out_path=args.out, fresh=args.fresh)
+          out_path=args.out, fresh=args.fresh,
+          tokenizer=args.tokenizer, vocab_size=args.vocab_size)
 
 
 def train(preset="tiny", steps=None, data_file=None, out_path=None,
-          root=ROOT, fresh=False):
+          root=ROOT, fresh=False, tokenizer="char", vocab_size=512):
     """Train EmotionAwareGPT into one growing checkpoint.
 
     ``steps`` counts optimizer steps in THIS run (each consumes
     ``grad_accum`` micro-batches). If the existing checkpoint matches this
-    preset's architecture, training resumes from its last step and saves
-    periodically. Pass ``fresh=True`` to retrain from scratch.
+    preset's architecture AND tokenizer, training resumes from its last
+    step and saves periodically. Pass ``fresh=True`` to retrain from
+    scratch. ``tokenizer="bpe"`` learns byte-level BPE merges from the
+    corpus (2-4x more text per context window than characters).
     """
     cfg = dict(PRESETS[preset])
     data_file = data_file or cfg["data"]
@@ -136,10 +150,26 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
             "for this starter configuration. Add more text."
         )
 
-    chars = sorted(set(text))
-    stoi = {ch: i for i, ch in enumerate(chars)}
-    itos = {i: ch for ch, i in stoi.items()}
-    encoded = torch.tensor([stoi[c] for c in text], dtype=torch.long)
+    use_bpe = tokenizer == "bpe"
+    tok = None
+    if use_bpe:
+        if vocab_size < 512:
+            print("Note: tiny BPE vocabularies (<512) learn only a few "
+                  "merges; 512+ recommended.")
+        tok = BPETokenizer()
+        encoded = torch.tensor(
+            tok.train(text, vocab_size=vocab_size), dtype=torch.long)
+        vocab = tok.vocab_size
+        compressed = len(text) / max(1, len(encoded))
+        print(f"Tokenizer: byte-level BPE | merges: {len(tok.merges)} "
+              f"| {compressed:.2f} chars per token")
+    else:
+        chars = sorted(set(text))
+        stoi = {ch: i for i, ch in enumerate(chars)}
+        itos = {i: ch for ch, i in stoi.items()}
+        encoded = torch.tensor([stoi[c] for c in text], dtype=torch.long)
+        vocab = len(chars)
+        print("Tokenizer: char (one character per token)")
 
     split = int(len(encoded) * 0.9)
     train_data, val_data = encoded[:split], encoded[split:]
@@ -163,7 +193,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     print("Device:", device,
           f"| GPUs: {ndev} (DataParallel)" if ndev > 1 else "",
           "| AMP:", amp_dtype if use_amp else "off")
-    print("Vocabulary size:", len(chars))
+    print("Vocabulary size:", vocab)
     print("Characters:", len(text))
 
 
@@ -190,28 +220,39 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
             print(f"Ignoring unreadable {CHECKPOINT}: {exc}")
         else:
             saved_cfg = saved.get("config", {})
+            saved_tok = saved.get("tokenizer") or {}
+            saved_kind = saved_tok.get("type", "char")
             same = (saved_cfg.get("n_embd") == N_EMBD
                     and saved_cfg.get("n_head") == N_HEAD
                     and saved_cfg.get("n_layer") == N_LAYER
-                    and saved_cfg.get("block_size") == BLOCK_SIZE)
+                    and saved_cfg.get("block_size") == BLOCK_SIZE
+                    and saved_kind == tokenizer)
             if not same:
                 raise ValueError(
-                    f"{CHECKPOINT} holds a different model size "
-                    f"({saved_cfg.get('n_embd')}x{saved_cfg.get('n_layer')} "
-                    f"vs this preset {N_EMBD}x{N_LAYER}). Use --fresh to "
+                    f"{CHECKPOINT} holds a different model size or "
+                    f"tokenizer ({saved_cfg.get('n_embd')}x"
+                    f"{saved_cfg.get('n_layer')}, "
+                    f"{saved_kind} tokenizer vs this preset {N_EMBD}x"
+                    f"{N_LAYER}, {tokenizer}). Use --fresh to "
                     "deliberately replace it, or --out to keep both.")
             else:
                 resume_state = saved
-                chars = saved["chars"]
-                stoi = {c: i for i, c in enumerate(chars)}
-                itos = {i: c for i, c in stoi.items()}
-                known = "".join(c for c in text if c in stoi)
-                encoded = torch.tensor([stoi[c] for c in known],
-                                       dtype=torch.long)
+                if use_bpe:
+                    tok = BPETokenizer.from_state(saved["tokenizer"])
+                    encoded = torch.tensor(tok.encode(text),
+                                           dtype=torch.long)
+                else:
+                    chars = saved["chars"]
+                    stoi = {c: i for i, c in enumerate(chars)}
+                    itos = {i: c for i, c in stoi.items()}
+                    known = "".join(c for c in text if c in stoi)
+                    encoded = torch.tensor([stoi[c] for c in known],
+                                           dtype=torch.long)
+                    vocab = len(chars)
                 split = int(len(encoded) * 0.9)
                 train_data, val_data = encoded[:split], encoded[split:]
                 print(f"Resuming {CHECKPOINT} at step {saved.get('step', 0)}")
-    model = EmotionAwareGPT(len(chars), config).to(device)
+    model = EmotionAwareGPT(vocab, config).to(device)
     if resume_state is not None:
         try:
             model.load_state_dict(resume_state["model"])
@@ -256,13 +297,18 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     def save_checkpoint(current_step):
         state = {key: value.detach().cpu()
                  for key, value in net.state_dict().items()}
+        if use_bpe:
+            blob = {"tokenizer": tokenizer_state(tok)}
+        else:
+            blob = {"chars": chars, "tokenizer": tokenizer_state(
+                CharCodec(chars))}
         torch.save(
             {
                 "model": state,
-                "chars": chars,
                 "config": config,
                 "step": current_step,
                 "optimizer": optimizer.state_dict(),
+                **blob,
             },
             CHECKPOINT,
         )

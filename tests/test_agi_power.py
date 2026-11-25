@@ -121,9 +121,10 @@ def test_agent():
         model = EmotionAwareGPT(len(chars), cfg)
         torch.save({"model": model.state_dict(), "chars": chars,
                     "config": cfg}, path)
-        reloaded, stoi, itos = load_model(path)
-        check("checkpoint reloads", len(itos) == len(chars)
-              and stoi["a"] == 0)
+        reloaded, codec = load_model(path)
+        check("checkpoint reloads", codec.vocab_size == len(chars)
+              and codec.type_name == "char"
+              and codec.decode(codec.encode(chars[0])) == chars[0])
         agent = AiraAgent(checkpoint=path)
         check("agent loads model checkpoint", agent.powered_by_model)
         reply = agent.think("hello dear aira!", emotion="happy")
