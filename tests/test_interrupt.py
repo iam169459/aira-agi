@@ -216,6 +216,87 @@ def run_wait_for_playback_tests():
 
 run_wait_for_playback_tests()
 
+print("== BargeInMonitor: noise immunity (adaptive floor) ==")
+
+# steady TV at 0.03 in a room that started quiet: must NEVER trigger,
+# and the learned floor must climb under it
+tv = BargeInMonitor(threshold=0.02, required_windows=4)
+check("steady TV noise 0.03 never triggers",
+      not any(tv.feed_rms(0.03) for _ in range(40)))
+check("TV proved the floor adapts upward", tv.noise_floor > 0.027)
+
+# fan/TV at 0.05 sustained: still no false trigger
+fan = BargeInMonitor(threshold=0.02, required_windows=4)
+check("steady fan noise 0.05 never triggers",
+      not any(fan.feed_rms(0.05) for _ in range(40)))
+check("fan pushed the floor near its own level", fan.noise_floor > 0.045)
+
+# louder steady chatter at 0.09 (was already on when she started):
+# first-window calibration swallows it
+chat = BargeInMonitor(threshold=0.02, required_windows=4)
+check("steady chatter 0.09 (on before playback) never triggers",
+      not any(chat.feed_rms(0.09) for _ in range(40)))
+
+# ...and after the TV has been on a while, a real shout still cuts through
+shout = BargeInMonitor(threshold=0.02, required_windows=4)
+for _ in range(20):
+    shout.feed_rms(0.03)
+check("no trigger during the noisy period before the shout", not shout.triggered)
+check("shout above the noisy room triggers",
+      any(shout.feed_rms(0.15) for _ in range(4)))
+
+# door slam right at playback start: one huge burst then quiet, and the
+# floor must decay back toward the true room level
+slam = BargeInMonitor(threshold=0.02, required_windows=4)
+slam.feed_rms(0.5)
+check("door slam alone does not trigger", not slam.triggered)
+check("burst cannot raise the bar above init cap",
+      slam.noise_floor <= 0.02 * BargeInMonitor._INIT_FLOOR_FACTOR)
+for _ in range(30):
+    slam.feed_rms(0.004)
+check("quiet windows decay the floor back down", slam.noise_floor < 0.02)
+check("no trigger after slam", not slam.triggered)
+
+# voice in a normal quiet room still triggers immediately
+quiet_room = BargeInMonitor(threshold=0.02, required_windows=4)
+for _ in range(5):
+    quiet_room.feed_rms(0.004)
+check("voice at 0.2 in a quiet room triggers",
+      any(quiet_room.feed_rms(0.2) for _ in range(4)))
+
+# a barely-above-the-room murmur (0.06 vs floor ~0.04) does NOT fire,
+# but a clear voice 3x the room does
+murmur = BargeInMonitor(threshold=0.02, required_windows=4)
+for _ in range(30):
+    murmur.feed_rms(0.04)
+check("no trigger on steady room tone alone", not murmur.triggered)
+check("barely-louder-than-room murmur does not trigger",
+      not murmur.feed_rms(0.06) and not murmur.feed_rms(0.06)
+      and not murmur.feed_rms(0.06) and not murmur.triggered)
+check("clear voice (3x room) cuts through the raised floor",
+      any(murmur.feed_rms(0.12) for _ in range(4)))
+
+# adapt=False keeps the old fixed-threshold behavior (loud hum triggers)
+fixed = BargeInMonitor(threshold=0.02, required_windows=4, adapt=False)
+check("adapt=False: fixed threshold still fires on steady 0.03",
+      any(fixed.feed_rms(0.03) for _ in range(4)))
+
+# reset keeps the learned floor (room has not changed)
+keep = BargeInMonitor(threshold=0.02, required_windows=4)
+for _ in range(20):
+    keep.feed_rms(0.04)
+floor_before = keep.noise_floor
+keep.reset()
+check("reset keeps the learned floor", keep.noise_floor == floor_before)
+
+# blasting continuous noise (>= 7x threshold) is the documented limit:
+# it fires the barge-in (at that volume the user almost certainly IS
+# trying to interrupt) and the floor is still capped sanely
+blast = BargeInMonitor(threshold=0.02, required_windows=4)
+check("blasting steady noise counts as an interruption attempt",
+      any(blast.feed_rms(0.3) for _ in range(4)))
+check("floor capped below the blasting level", blast.noise_floor <= 0.12)
+
 print()
 print(f"PASSED: {len(PASS)}   FAILED: {len(FAIL)}")
 sys.exit(1 if FAIL else 0)
