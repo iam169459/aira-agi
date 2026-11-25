@@ -4,7 +4,7 @@ import os
 import torch
 from torch.nn import functional as F
 
-from ai_core.model import EmotionAwareGPT
+from ai_core.model import EmotionAwareGPT, fuse_legacy_state_dict
 
 torch.manual_seed(42)
 
@@ -73,9 +73,14 @@ def build_corpus(root=ROOT):
     return out
 
 
+# One canonical model file: training resumes it and it keeps growing.
+DEFAULT_CHECKPOINT_NAME = "aira_model.pt"
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="train the EmotionAwareGPT checkpoint (tiny_model.pt)")
+        description="train EmotionAwareGPT into one growing checkpoint "
+                    "(aira_model.pt); re-running resumes that same model")
     parser.add_argument("--preset", default="tiny", choices=sorted(PRESETS),
                         help="training profile (default: tiny)")
     parser.add_argument("--steps", type=int, default=None,
@@ -83,23 +88,32 @@ def main():
     parser.add_argument("--data", default=None,
                         help="override the preset's training file")
     parser.add_argument("--out", default=None,
-                        help="checkpoint output path (default: tiny_model.pt)")
+                        help=f"checkpoint path (default: {DEFAULT_CHECKPOINT_NAME})")
+    parser.add_argument("--fresh", action="store_true",
+                        help="discard the existing checkpoint and retrain "
+                             "from scratch (needed when deliberately "
+                             "switching to a different preset size)")
     args = parser.parse_args()
     train(args.preset, steps=args.steps, data_file=args.data,
-          out_path=args.out)
+          out_path=args.out, fresh=args.fresh)
 
 
 def train(preset="tiny", steps=None, data_file=None, out_path=None,
-          root=ROOT):
-    """Train EmotionAwareGPT. ``steps`` counts optimizer steps; each one
-    consumes ``grad_accum`` micro-batches."""
+          root=ROOT, fresh=False):
+    """Train EmotionAwareGPT into one growing checkpoint.
+
+    ``steps`` counts optimizer steps in THIS run (each consumes
+    ``grad_accum`` micro-batches). If the existing checkpoint matches this
+    preset's architecture, training resumes from its last step and saves
+    periodically. Pass ``fresh=True`` to retrain from scratch.
+    """
     cfg = dict(PRESETS[preset])
     data_file = data_file or cfg["data"]
     if data_file == "beast_corpus.txt" and not os.path.exists(
             os.path.join(root, "data", data_file)):
         build_corpus(root)
     DATA_FILE = os.path.join(root, "data", data_file)
-    CHECKPOINT = out_path or os.path.join(root, "tiny_model.pt")
+    CHECKPOINT = out_path or os.path.join(root, DEFAULT_CHECKPOINT_NAME)
     steps = steps or cfg["max_steps"]
     BLOCK_SIZE = cfg["block_size"]
     BATCH_SIZE = cfg["batch_size"]
@@ -167,7 +181,43 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         "n_layer": N_LAYER,
         "dropout": DROPOUT,
     }
+    resume_state = None
+    if not fresh and os.path.exists(CHECKPOINT):
+        try:
+            saved = torch.load(CHECKPOINT, map_location="cpu",
+                               weights_only=False)
+        except Exception as exc:
+            print(f"Ignoring unreadable {CHECKPOINT}: {exc}")
+        else:
+            saved_cfg = saved.get("config", {})
+            same = (saved_cfg.get("n_embd") == N_EMBD
+                    and saved_cfg.get("n_head") == N_HEAD
+                    and saved_cfg.get("n_layer") == N_LAYER
+                    and saved_cfg.get("block_size") == BLOCK_SIZE)
+            if not same:
+                raise ValueError(
+                    f"{CHECKPOINT} holds a different model size "
+                    f"({saved_cfg.get('n_embd')}x{saved_cfg.get('n_layer')} "
+                    f"vs this preset {N_EMBD}x{N_LAYER}). Use --fresh to "
+                    "deliberately replace it, or --out to keep both.")
+            else:
+                resume_state = saved
+                chars = saved["chars"]
+                stoi = {c: i for i, c in enumerate(chars)}
+                itos = {i: c for i, c in stoi.items()}
+                known = "".join(c for c in text if c in stoi)
+                encoded = torch.tensor([stoi[c] for c in known],
+                                       dtype=torch.long)
+                split = int(len(encoded) * 0.9)
+                train_data, val_data = encoded[:split], encoded[split:]
+                print(f"Resuming {CHECKPOINT} at step {saved.get('step', 0)}")
     model = EmotionAwareGPT(len(chars), config).to(device)
+    if resume_state is not None:
+        try:
+            model.load_state_dict(resume_state["model"])
+        except RuntimeError:
+            model.load_state_dict(
+                fuse_legacy_state_dict(resume_state["model"]))
     if use_amp:
         _fp_forward = model.forward
         def amp_forward(*fwd_args, **fwd_kwargs):
@@ -179,6 +229,13 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
     net = model.module if isinstance(model, torch.nn.DataParallel) else model
     optimizer = torch.optim.AdamW(net.parameters(), lr=LEARNING_RATE)
+    if resume_state is not None and resume_state.get("optimizer"):
+        try:
+            optimizer.load_state_dict(resume_state["optimizer"])
+            for group in optimizer.param_groups:
+                group["lr"] = LEARNING_RATE
+        except (ValueError, KeyError):
+            print("Saved optimizer state is incompatible; using a fresh one.")
 
 
     @torch.no_grad()
@@ -196,8 +253,23 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         return results
 
 
+    def save_checkpoint(current_step):
+        state = {key: value.detach().cpu()
+                 for key, value in net.state_dict().items()}
+        torch.save(
+            {
+                "model": state,
+                "chars": chars,
+                "config": config,
+                "step": current_step,
+                "optimizer": optimizer.state_dict(),
+            },
+            CHECKPOINT,
+        )
+        print(f"Saved checkpoint to {CHECKPOINT} at step {current_step}")
+
     model.train()
-    step = 0
+    step = resume_state.get("step", 0) if resume_state is not None else 0
     for micro in range(steps * GRAD_ACCUM):
         x, y = get_batch(train_data)
         _, loss = model(x, targets=y)
@@ -210,6 +282,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
             continue
         if step % EVAL_EVERY == 0:
             print(f"step {step}: {estimate_loss()}")
+            save_checkpoint(step)
         if scaler is not None:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -222,15 +295,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         step += 1
 
     print("Final loss:", estimate_loss())
-    torch.save(
-        {
-            "model": net.cpu().state_dict(),
-            "chars": chars,
-            "config": config,
-        },
-        CHECKPOINT,
-    )
-    print(f"Saved checkpoint to {CHECKPOINT}")
+    save_checkpoint(step)
 
 
 if __name__ == "__main__":

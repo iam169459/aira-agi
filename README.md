@@ -37,7 +37,8 @@ aira = AiraAgent()
 aira.think("hello aira!")
 ```
 
-Train her (start small, go up):
+Train her (start small, go up). Every run grows the same single
+checkpoint, `aira_model.pt` — later runs resume it automatically:
 
 ```bash
 python train.py --preset tiny      # minutes

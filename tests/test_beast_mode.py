@@ -81,7 +81,7 @@ def test_consent_profiles():
         check("revoked loses coverage", store.get("mine") is None)
 
     from modules.cyber_tools import clitool, __version__ as ct_version
-    check("toolkit version bumped", ct_version == "2.2.0", ct_version)
+    check("toolkit version current", ct_version == "2.3.0", ct_version)
     check("clitool has consent helpers",
           callable(clitool._apply_profile) and callable(clitool._consent))
 
@@ -234,7 +234,31 @@ def test_train_presets():
           and PRESETS["beast"]["n_embd"] > PRESETS["tiny"]["n_embd"])
 
 
+def test_one_model_resume():
+    import os
+    import tempfile
+    import torch
+    from train import train
+    out = os.path.join(tempfile.mkdtemp(), "aira_model.pt")
+    train("tiny", steps=1, out_path=out)
+    first = torch.load(out, weights_only=False)["step"]
+    train("tiny", steps=1, out_path=out)
+    again = torch.load(out, weights_only=False)
+    check("resume accumulates steps and one file wins",
+          again["step"] > first and "optimizer" in again,
+          {"first": first, "second": again["step"]})
+    size_blocked = False
+    try:
+        train("base", steps=1, out_path=out)
+    except ValueError:
+        size_blocked = True
+    check("size-mismatch guards the single model", size_blocked,
+          "base run against tiny checkpoint must raise")
+
+
 def main():
+    print("[one-model resume]")
+    test_one_model_resume()
     print("[consent profiles]")
     test_consent_profiles()
     print("[persona brain]")
