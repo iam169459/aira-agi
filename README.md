@@ -62,6 +62,11 @@ python train.py --preset beast     # 10M — her full-size brain on CPU
 python train.py --preset xl        # 31.8M — first GPU tier
 python train.py --preset xxl       # 85.6M — Kaggle T4 sweet spot
 python train.py --preset titan     # 202M — see docs/KAGGLE_TRAINING.md for free Kaggle GPUs
+
+# Superpower switch: byte-level BPE tokenizer, learned from OUR OWN corpus
+# (no pretrained tokenizer files). Packs ~2.5x more text into the same
+# context window and can never fail on any input (emoji, CJK, anything).
+python train.py --preset xxl --tokenizer bpe --vocab-size 4096
 ```
 
 Drop more text into `data/`, rerun `python -c "import train;
@@ -78,10 +83,11 @@ Aira's security tools only touch targets **you own or have permission to test**.
 
 ## Testing
 
-The whole suite is green — **552 checks across 13 suites, 0 failures** —
-covering the voice engine, the transformer, the agent brain, the tool
-skills, the daemon, cybersecurity tooling, developer skills, and the
-two-way interruption system:
+The whole suite is green — **595 checks across 14 suites, 0 failures** —
+covering the voice engine, the transformer, the tokenizer (char +
+byte-level BPE), the agent brain, the tool skills, the daemon,
+cybersecurity tooling, developer skills, and the two-way interruption
+system:
 
 | Suite | Checks | Suite | Checks |
 |---|---:|---|---:|
@@ -91,7 +97,7 @@ two-way interruption system:
 | test_selfedit | 28 | test_cyber_professional | 50 |
 | test_beast_mode | 92 | test_natural_speech | 42 |
 | test_dev_skills | 55 | test_interrupt | 83 |
-| test_cyber_tools | 48 | | |
+| test_cyber_tools | 48 | test_tokenizer | 43 |
 
 ```bash
 python -m pytest tests/ -q        # if you have pytest
