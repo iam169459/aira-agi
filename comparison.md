@@ -55,6 +55,7 @@ train time), param counts measured live:
 | xl | 31,814,758 | 384 chars | free Kaggle GPU, ~1–2 h |
 | xxl | 85,584,486 | 512 chars | Kaggle GPU + gradient accumulation |
 | titan | 202,233,958 | 512 chars | Kaggle T4×2 with AMP + grad-accum |
+| nova | 91,330,048 | 512 **BPE tokens** + RoPE | modern-flagship: byte-level BPE 4096 + rotary embeddings; generation not capped at the training window |
 
 Training corpus today: ~0.42 MB of text (`data/beast_corpus.txt`); tokenized
 char-level by default or byte-level BPE with `--tokenizer bpe`.
@@ -90,19 +91,29 @@ better essays.
 |---|---|---|
 | Tokenizer | char-level, **or** byte-level BPE (own corpus, 512 vocab — measured 2.53 chars/token vs 1.0 char-level, i.e. 2.5× more text per context window) | BPE subwords (32K–256K vocab) |
 | Emotion conditioning | ✅ learned embedding, 8 emotions | ❌ (added later via Chat-tuning) |
-| Positional encoding | learned embeddings | learned / RoPE |
+| Positional encoding | learned embeddings, or RoPE (`--rope`) | learned / RoPE |
 | Attention | fused QKV, causal, pre-LN | same family of tricks |
 | Context window | 64–512 **chars** | 4K–1M **tokens** |
 | Training loop | AMP, grad-accum, DataParallel, auto-resume | industry-standard stacks |
 
-One of the two old architectural gaps is now closed: **byte-level BPE
-tokenization** ships built-in (`python train.py --preset xxl --tokenizer
-bpe --vocab-size 4096`), learned purely from our own corpus — no
-pretrained tokenizer files, no borrowed vocabularies. That packs ~2–3×
-more text into the same context window and, because the base alphabet
-is all 256 bytes, no input can ever fail to encode. The remaining gap
-is **positional scaling / RoPE** — learned position embeddings still
-hard-cap the context at `block_size`.
+Both of the old architectural gaps are now closed:
+
+1. **Byte-level BPE tokenization** ships built-in (`python train.py
+   --preset xxl --tokenizer bpe --vocab-size 4096`), learned purely from
+   our own corpus — no pretrained tokenizer files, no borrowed
+   vocabularies. Measured 2.53 chars/token at vocab 512 and 3.63 at
+   1024, and because the base alphabet is all 256 bytes, no input can
+   ever fail to encode.
+2. **RoPE positional encoding** ships opt-in (`--rope`, default in the
+   `nova` preset) — the Llama/Mistral scheme. Attention now works in
+   relative angles instead of a learned position table, so generation
+   is no longer capped at `block_size` (demonstrated: 350 tokens from a
+   model trained with a 64-token window) and the corpus can be trained
+   with longer context windows without re-architecting.
+
+Remaining honest gap versus the frontier: scale — corpus size and
+trained parameter count, which is a compute story, not an architecture
+one.
 
 ### 3.3 What Aira does that the big models don't ship
 
@@ -139,7 +150,7 @@ hard-cap the context at `block_size`.
 | Is Aira smarter than GPT-4 / Claude / Gemini? | No — not in the same weight class, by a factor of ~1000× in params and ~10⁹× in data. Those are API rentals anyway. |
 | Is Aira smarter than a random 10M toy model? | Yes — she has the emotion pipeline, tools, memory, self-edit, self-update, a security toolkit, and a real voice, none of which a bare checkpoint gives you. |
 | Is Aira *yours*? | ✅ Yes — fully. Source, voice, data, weights, improvement path. That is the product. |
-| Can she keep growing? | ✅ `tiny → base → beast → xl → xxl → titan` measured ladders; byte-level BPE already in; next steps: RoPE, corpus growth, then 1B+ on rented free GPU time. |
+| Can she keep growing? | ✅ `tiny → base → beast → xl → xxl → titan → nova` measured ladders; byte-level BPE + RoPE already in; next steps: corpus growth, then 1B+ on rented free GPU time. |
 
 **Bottom line:** comparing Aira to frontier models is comparing a garden to a
 supermarket. The supermarket has more shelves; the garden is yours, it grows,
