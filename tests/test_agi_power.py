@@ -13,7 +13,7 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ai_core.model import EmotionAwareGPT, sampling_probs
-from ai_core.agent import AiraAgent, load_model
+from ai_core.agent import AiraAgent, load_model, _INTENT_RESPONSES
 from ai_core.daemon import AiraDaemon
 
 PASS = []
@@ -100,7 +100,10 @@ def test_agent():
         check("template fallback without checkpoint",
               not agent.powered_by_model and len(agent.think(
                   "I need help", emotion="stressed")) > 10)
-        check("thanks override", "welcome" in agent.think("thanks a lot!"))
+        intent_thanks = next(out for keys, out in _INTENT_RESPONSES
+                             if keys == ("thank",))
+        check("thanks override", agent.think("thanks a lot!")
+              in intent_thanks)
         agent.remember("user", "alpha")
         agent.remember("aira", "beta")
         check("memory ordered", [t["text"] for t in agent.recall(2)]
