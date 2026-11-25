@@ -15,7 +15,10 @@ CHECKPOINT = os.path.join(ROOT, "tiny_model.pt")
 
 # Training profiles. "tiny" is the original starter; "beast" is several
 # sizes up. "xl", "xxl" and "titan" scale the same architecture up to
-# Kaggle-GPU sizes and all train on the combined beast corpus.
+# Kaggle-GPU sizes and all train on the combined beast corpus. "nova" is
+# the modern-flagship: byte-level BPE + RoPE (see ai_core/tokenizer.py).
+# A preset may specify "tokenizer"/"vocab_size"/"rope"; CLI flags
+# (--tokenizer/--vocab-size/--rope) override those choices.
 PRESETS = {
     "tiny": {
         "data": "code_corpus.txt", "block_size": 64,
@@ -49,6 +52,15 @@ PRESETS = {
         "batch_size": 8, "grad_accum": 4, "max_steps": 30000,
         "eval_every": 1000,
         "lr": 2.5e-4, "n_embd": 1024, "n_head": 16, "n_layer": 16,
+    },
+    # Modern-flagship preset: byte-level BPE (4096 vocab) + RoPE, so the
+    # 512-token training window can still generate far beyond itself.
+    "nova": {
+        "data": "beast_corpus.txt", "block_size": 512,
+        "batch_size": 8, "grad_accum": 2, "max_steps": 20000,
+        "eval_every": 500,
+        "lr": 3e-4, "n_embd": 768, "n_head": 12, "n_layer": 12,
+        "tokenizer": "bpe", "vocab_size": 4096, "rope": True,
     },
 }
 DROPOUT = 0.1
@@ -94,34 +106,46 @@ def main():
                         help="discard the existing checkpoint and retrain "
                              "from scratch (needed when deliberately "
                              "switching to a different preset size)")
-    parser.add_argument("--tokenizer", default="char",
+    parser.add_argument("--tokenizer", default=None,
                         choices=("char", "bpe"),
-                        help="char = one character per token (default, "
-                             "compatible with old checkpoints); bpe = "
+                        help="char = one character per token; bpe = "
                              "byte-level Byte Pair Encoding learned from "
                              "the corpus (packs 2-4x more text into the "
-                             "same context window)")
-    parser.add_argument("--vocab-size", type=int, default=512,
+                             "same context window). Default: the preset's "
+                             "choice (nova defaults to bpe, others char)")
+    parser.add_argument("--vocab-size", type=int, default=None,
                         help="BPE vocabulary size (merges = vocab-size - "
-                             "256); ignored with --tokenizer char")
+                             "256); default: the preset's choice (512, or "
+                             "4096 for nova)")
+    parser.add_argument("--rope", action="store_true",
+                        help="rotary position embeddings (Llama/Mistral "
+                             "style): generation is no longer capped at "
+                             "block_size (nova enables this by default)")
     args = parser.parse_args()
     train(args.preset, steps=args.steps, data_file=args.data,
           out_path=args.out, fresh=args.fresh,
-          tokenizer=args.tokenizer, vocab_size=args.vocab_size)
+          tokenizer=args.tokenizer, vocab_size=args.vocab_size,
+          rope=args.rope)
 
 
 def train(preset="tiny", steps=None, data_file=None, out_path=None,
-          root=ROOT, fresh=False, tokenizer="char", vocab_size=512):
+          root=ROOT, fresh=False, tokenizer=None, vocab_size=None,
+          rope=None):
     """Train EmotionAwareGPT into one growing checkpoint.
 
     ``steps`` counts optimizer steps in THIS run (each consumes
     ``grad_accum`` micro-batches). If the existing checkpoint matches this
-    preset's architecture AND tokenizer, training resumes from its last
-    step and saves periodically. Pass ``fresh=True`` to retrain from
-    scratch. ``tokenizer="bpe"`` learns byte-level BPE merges from the
-    corpus (2-4x more text per context window than characters).
+    preset's architecture, tokenizer AND positional scheme, training
+    resumes from its last step and saves periodically. Pass
+    ``fresh=True`` to retrain from scratch. ``tokenizer="bpe"`` learns
+    byte-level BPE merges from the corpus; ``rope=True`` swaps learned
+    position embeddings for rotary embeddings (generation not capped at
+    block_size). Unset arguments fall back to the preset's choices.
     """
     cfg = dict(PRESETS[preset])
+    tokenizer = tokenizer or cfg.get("tokenizer", "char")
+    vocab_size = vocab_size or cfg.get("vocab_size", 512)
+    rope = bool(cfg.get("rope", False) if rope is None else rope)
     data_file = data_file or cfg["data"]
     if data_file == "beast_corpus.txt" and not os.path.exists(
             os.path.join(root, "data", data_file)):
@@ -192,7 +216,8 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         BATCH_SIZE = BATCH_SIZE * ndev
     print("Device:", device,
           f"| GPUs: {ndev} (DataParallel)" if ndev > 1 else "",
-          "| AMP:", amp_dtype if use_amp else "off")
+          "| AMP:", amp_dtype if use_amp else "off",
+          "| RoPE:", "on" if rope else "off")
     print("Vocabulary size:", vocab)
     print("Characters:", len(text))
 
@@ -210,6 +235,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         "n_head": N_HEAD,
         "n_layer": N_LAYER,
         "dropout": DROPOUT,
+        "rope": rope,
     }
     resume_state = None
     if not fresh and os.path.exists(CHECKPOINT):
@@ -226,14 +252,17 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
                     and saved_cfg.get("n_head") == N_HEAD
                     and saved_cfg.get("n_layer") == N_LAYER
                     and saved_cfg.get("block_size") == BLOCK_SIZE
-                    and saved_kind == tokenizer)
+                    and saved_kind == tokenizer
+                    and bool(saved_cfg.get("rope", False)) == rope)
             if not same:
                 raise ValueError(
-                    f"{CHECKPOINT} holds a different model size or "
-                    f"tokenizer ({saved_cfg.get('n_embd')}x"
+                    f"{CHECKPOINT} holds a different model size, tokenizer "
+                    f"or positional scheme ({saved_cfg.get('n_embd')}x"
                     f"{saved_cfg.get('n_layer')}, "
-                    f"{saved_kind} tokenizer vs this preset {N_EMBD}x"
-                    f"{N_LAYER}, {tokenizer}). Use --fresh to "
+                    f"{saved_kind} tokenizer, "
+                    f"rope={bool(saved_cfg.get('rope', False))} vs this "
+                    f"preset {N_EMBD}x{N_LAYER}, {tokenizer}, "
+                    f"rope={rope}). Use --fresh to "
                     "deliberately replace it, or --out to keep both.")
             else:
                 resume_state = saved
