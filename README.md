@@ -52,15 +52,21 @@ def weather(m):
 ```
 
 Train her (start small, go up). Every run grows the same single
-checkpoint, `aira_model.pt` — later runs resume it automatically:
+checkpoint, `aira_model.pt` — later runs resume it automatically, even
+across crashed or time-capped sessions:
 
 ```bash
-python train.py --preset tiny      # minutes
-python train.py --preset base
-python train.py --preset beast     # her full-size brain on CPU
-python train.py --preset xxl       # ~86M params, needs a GPU
-python train.py --preset titan     # ~200M params — see docs/KAGGLE_TRAINING.md for free Kaggle GPUs
+python train.py --preset tiny      # 0.36M params — minutes, CPU
+python train.py --preset base      # 2.3M — CPU
+python train.py --preset beast     # 10M — her full-size brain on CPU
+python train.py --preset xl        # 31.8M — first GPU tier
+python train.py --preset xxl       # 85.6M — Kaggle T4 sweet spot
+python train.py --preset titan     # 202M — see docs/KAGGLE_TRAINING.md for free Kaggle GPUs
 ```
+
+Drop more text into `data/`, rerun `python -c "import train;
+train.build_corpus()"`, and keep training — the same model keeps
+growing.
 
 ---
 
@@ -72,8 +78,14 @@ Aira's security tools only touch targets **you own or have permission to test**.
 
 ## Testing
 
+The whole suite is green and covers the voice engine, the transformer,
+the agent brain, the tool skills, the daemon, cybersecurity tooling,
+and developer skills:
+
 ```bash
-python -m pytest tests/ -q
+python -m pytest tests/ -q        # if you have pytest
+python -m tests.test_transformer  # or run any suite directly
+python -m tests.test_more_tools
 ```
 
 ## Updating
@@ -88,7 +100,18 @@ Aira updates herself from GitHub, safely:
 python -m ai_core.updater
 ```
 
-The full suite covers the voice engine, the transformer, the agent brain, the daemon, cybersecurity tooling, and developer skills.
+## Documentation
+
+| Doc | Covers |
+|---|---|
+| [`QUICK_START.md`](docs/QUICK_START.md) | first-run walkthrough |
+| [`KAGGLE_TRAINING.md`](docs/KAGGLE_TRAINING.md) | free-GPU training on the preset ladder |
+| [`TRAINING_SUMMARY.md`](docs/TRAINING_SUMMARY.md) | training configs in depth |
+| [`NATURAL_SPEECH.md`](docs/NATURAL_SPEECH.md) · [`VOICE_AI_GUIDE.md`](docs/VOICE_AI_GUIDE.md) | the voice engine |
+| [`CYBER_TOOLS.md`](docs/CYBER_TOOLS.md) · [`EXAMPLE_PENTEST_REPORT.md`](docs/EXAMPLE_PENTEST_REPORT.md) | the security toolkit |
+| [`DEV_SKILLS.md`](docs/DEV_SKILLS.md) | code audit, dependency hygiene, self-edit |
+| [`AGI_IMPLEMENTATION.md`](docs/AGI_IMPLEMENTATION.md) | agent architecture |
+| [`GIRL_PERSONA_GUIDE.md`](docs/GIRL_PERSONA_GUIDE.md) · [`GIRL_VOICE_SUMMARY.md`](docs/GIRL_VOICE_SUMMARY.md) | persona & voice tuning |
 
 ---
 
