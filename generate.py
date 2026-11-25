@@ -11,10 +11,13 @@ from ai_core.model import EmotionAwareGPT, fuse_legacy_state_dict
 
 def main():
     parser = argparse.ArgumentParser()
+    _root = os.path.dirname(os.path.abspath(__file__))
+    _aira = os.path.join(_root, "aira_model.pt")
     parser.add_argument(
         "--checkpoint",
         default=os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "tiny_model.pt"
+            _root,
+            "aira_model.pt" if os.path.exists(_aira) else "tiny_model.pt",
         ),
     )
     parser.add_argument("--prompt", default="A language model")

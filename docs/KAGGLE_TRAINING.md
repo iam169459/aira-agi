@@ -29,10 +29,13 @@ wall-clock per 1k optimizer steps on T4 x2: `xl` ~25 min, `xxl` ~1.5 h,
 2. New Notebook → Settings → Accelerator → **GPU T4 x2** (or P100).
 3. Internet → On (only needed for the clone).
 4. Run the notebook, pick `PRESET = 'xxl'` (or `'titan'`), and let it run.
-   Sessions cap at 12 h, but checkpoints save to `/kaggle/working/`
-   continuously — re-run with `--steps` to continue on a fresh session.
-5. Download `aira_model.pt` from the notebook's Output tab and drop it
-   next to `aira.py` as `tiny_model.pt` (or pass `--out`).
+   Sessions cap at 12 h, but the checkpoint saves to `/kaggle/working/`
+   at every eval interval. To continue, upload the previous checkpoint
+   to save its path as the `--out` file: training detects it and resumes
+   automatically at the recorded step.
+5. Download `aira_model.pt` from the notebook's Output tab and place it
+   next to `aira.py` (or pass `--out`); the agent picks it up
+   automatically.
 
 Command line, on any CUDA machine (including Kaggle's terminal):
 
@@ -40,6 +43,21 @@ Command line, on any CUDA machine (including Kaggle's terminal):
 python train.py --preset xxl --out xxl_model.pt
 python train.py --preset titan --out titan_model.pt
 ```
+
+## One model, grown repeatedly
+
+Everything trains into a single file, `aira_model.pt`:
+
+- `python train.py --preset xxl` resumes it if the size matches
+  (model + optimizer + step counter) and keeps improving the same
+  model — run it once per session, as many sessions as you like.
+- Checkpoints are saved at every eval interval, so a 12 h Kaggle
+  session can die without losing work since the last eval.
+- A size-mismatched existing file raises an error instead of being
+  overwritten — use `--fresh` deliberately, or `--out other.pt` to
+  branch a second model when you want to experiment.
+- `ai_core/agent.py` and `generate.py` prefer `aira_model.pt` over the
+  legacy `tiny_model.pt` automatically.
 
 ## What changed for GPU training
 

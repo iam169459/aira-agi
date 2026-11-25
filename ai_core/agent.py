@@ -16,7 +16,11 @@ from ai_core.model import EmotionAwareGPT, fuse_legacy_state_dict
 from ai_core.tools import default_registry
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_CHECKPOINT = os.path.join(ROOT, "tiny_model.pt")
+# One growing model: aira_model.pt when it exists, legacy name otherwise.
+_AIRA_MODEL = os.path.join(ROOT, "aira_model.pt")
+_LEGACY_MODEL = os.path.join(ROOT, "tiny_model.pt")
+DEFAULT_CHECKPOINT = (_AIRA_MODEL if os.path.exists(_AIRA_MODEL)
+                      else _LEGACY_MODEL)
 
 MOOD_TEMPLATES = {
     "stressed": "Hey, breathe with me for a second. In... and out. "
