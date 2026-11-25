@@ -27,3 +27,6 @@ agi_state.json
 
 # derived beast training corpus (rebuilt by train.py)
 data/beast_corpus.txt
+
+# Agent-written notes and update state
+data/aira_notes.jsonl
