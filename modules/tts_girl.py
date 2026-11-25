@@ -95,6 +95,12 @@ except Exception:
     SD_AVAILABLE = False
 
 try:
+    from modules.interrupt import AIRA_INTERRUPTED, wait_for_playback
+except ImportError:  # older layout / standalone use
+    AIRA_INTERRUPTED = "__interrupted__"
+    wait_for_playback = None
+
+try:
     from piper import PiperVoice
     PIPER_AVAILABLE = True
 except Exception:
@@ -625,7 +631,7 @@ class GirlVoiceTTS:
             print(f"⚠️ Could not save combined audio: {e}")
             return None
     
-    def speak(self, text: str, emotion: str = None, block: bool = True, play: bool = False, use_rhythm: bool = True, use_breathing: bool = True) -> Optional[str]:
+    def speak(self, text: str, emotion: str = None, block: bool = True, play: bool = False, use_rhythm: bool = True, use_breathing: bool = True, interrupt_check=None) -> Optional[str]:
         """
         Speak text with a human-like rhythm.
         
@@ -638,9 +644,13 @@ class GirlVoiceTTS:
             emotion: Emotion for voice modulation (optional)
             block: Whether to block until speech completes
             play: Stream audio through the speakers inside this call
+            interrupt_check: Optional callable polled while she talks; when it
+                returns True her speech stops immediately and the sentinel
+                AIRA_INTERRUPTED is returned (barge-in)
             
         Returns:
-            Path to saved audio file, or None when streamed or unavailable
+            Path to saved audio file, AIRA_INTERRUPTED when barge-in fired,
+            or None when streamed or unavailable
         """
         if not self._init_successful or self.engine is None:
             if not play:
@@ -681,13 +691,20 @@ class GirlVoiceTTS:
                         time.sleep(0.05)
                     sd.play(audio, sr)
                     if block:
-                        sd.wait()
+                        if self._wait_playback(interrupt_check):
+                            return AIRA_INTERRUPTED
                     if i < len(groups) - 1:
-                        time.sleep(self._group_pause(group, emotion))
+                        pause = self._group_pause(group, emotion)
+                        if interrupt_check is not None:
+                            if self._wait_playback(interrupt_check, max_s=pause):
+                                return AIRA_INTERRUPTED
+                        else:
+                            time.sleep(pause)
                         if self.breathing and use_breathing and self._rng.random() < self.breath_chance * breath_mod:
                             sd.play(self._make_breath(sr), sr)
                             if block:
-                                sd.wait()
+                                if self._wait_playback(interrupt_check):
+                                    return AIRA_INTERRUPTED
                 else:
                     if i == 0 and self.breathing and use_breathing:
                         pieces.append(self._make_breath(sr, strength=0.9))
@@ -707,6 +724,22 @@ class GirlVoiceTTS:
             if not play:
                 print(f"[Aira (girl voice)]: {text}")
             return None
+    
+    def _wait_playback(self, interrupt_check=None, max_s: float = None) -> bool:
+        """
+        Block until the current sounddevice playback finishes, but stop early
+        when `interrupt_check` fires (user barge-in). Falls back to the plain
+        blocking sd.wait() when no check is given or the interrupt module is
+        unavailable.
+        
+        Returns:
+            True if playback was cut short by the interrupt check
+        """
+        if interrupt_check is None or wait_for_playback is None or not SD_AVAILABLE:
+            if SD_AVAILABLE:
+                sd.wait()
+            return False
+        return bool(wait_for_playback(interrupt_check, max_s=max_s))
     
     def speak_immediate(self, text: str, emotion: str = None):
         """

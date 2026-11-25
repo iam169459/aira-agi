@@ -55,6 +55,16 @@ except ImportError as e:
     print(f"Warning: Emotion module not available: {e}")
     EMOTION_AVAILABLE = False
 
+try:
+    from modules.interrupt import (
+        BargeInMonitor, should_aira_interrupt, user_wants_silence,
+        watch_mic_during_playback,
+    )
+    INTERRUPT_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: interrupt module not available: {e}")
+    INTERRUPT_AVAILABLE = False
+
 
 class VoiceAI:
     """Main voice AI class for voice-to-voice conversations"""
@@ -67,7 +77,8 @@ class VoiceAI:
                  stt_model: str = "base",
                  tts_rate: int = 170,
                  tts_volume: float = 0.9,
-                 young_female: bool = True):
+                 young_female: bool = True,
+                 barge_in: bool = True):
         """
         Initialize Voice AI
         
@@ -80,6 +91,7 @@ class VoiceAI:
             tts_rate: TTS speech rate (words per minute)
             tts_volume: TTS volume (0.0 to 1.0)
             young_female: Prefer young female voice for TTS
+            barge_in: Stop speaking the moment the user starts talking
         """
         self.use_agi = use_agi and AGI_AVAILABLE
         self.use_stt = use_stt and STT_AVAILABLE
@@ -100,6 +112,12 @@ class VoiceAI:
         self.silence_threshold = 0.01
         self.min_silence_duration = 2.0  # seconds
         self.recording = False
+        
+        # Two-way interruption
+        self.barge_in = barge_in and INTERRUPT_AVAILABLE  # user can stop Aira mid-speech
+        self.user_interrupted = False                     # Aira cut into the user
+        self.user_interrupt_probe = True                  # peek at user's words while recording
+        self.interrupt_probe_s = 2.0                      # probe interval (seconds)
         
         # Initialize components
         self._initialize_components(
@@ -227,6 +245,7 @@ class VoiceAI:
                 # Record for duration or until silence
                 start_time = time.time()
                 silence_start = None
+                last_probe = time.time()
                 
                 while self.recording:
                     # Check for silence
@@ -240,6 +259,16 @@ class VoiceAI:
                                 break
                         else:
                             silence_start = None
+                    
+                    # Aira can interrupt the user mid-sentence: every couple
+                    # of seconds, transcribe the partial audio and check for
+                    # distress/urgency cues ("help me", "emergency", ...)
+                    if (len(audio_data) > 0
+                            and time.time() - last_probe >= self.interrupt_probe_s):
+                        last_probe = time.time()
+                        if self._check_interrupt_cues(np.concatenate(audio_data)):
+                            print("\n\x1b[35mAira interrupted you mid-sentence\x1b[0m")
+                            break
                     
                     # Check duration
                     if time.time() - start_time > duration:
@@ -361,6 +390,15 @@ class VoiceAI:
         if not text or text.strip() == '':
             return "I didn't catch that. Could you please repeat?"
         
+        # The user asked her to stop talking: keep the reply minimal
+        if INTERRUPT_AVAILABLE and user_wants_silence(text):
+            return "Okay, I'll be quiet. I'm right here when you're ready."
+        
+        # Aira already heard a distress cue mid-sentence: acknowledge instantly
+        if INTERRUPT_AVAILABLE and should_aira_interrupt(text):
+            return ("Stop for a second and breathe - I'm right here. "
+                    "Tell me what's going on.")
+        
         # Use AGI Core if available
         if self.use_agi and self.agi_agent:
             try:
@@ -397,17 +435,20 @@ class VoiceAI:
         # Default response
         return f"I heard you say: '{text}'. How can I assist you with that?"
     
-    def _speak(self, text: str, emotion: str = None):
+    def _speak(self, text: str, emotion: str = None) -> bool:
         """
-        Speak text using TTS
+        Speak text using TTS (interruptible by the user's voice)
         
         Args:
             text: Text to speak
             emotion: Emotion for voice modulation
+        
+        Returns:
+            True if the user interrupted her mid-sentence
         """
         if not self.use_tts or not self.tts:
             print(f"\n[34mAira:[0m {text}")
-            return
+            return False
         
         try:
             if emotion is None:
@@ -421,13 +462,15 @@ class VoiceAI:
                 audio_path = self.tts.speak(text, emotion=emotion)
             
             if audio_path:
-                # Play the audio
+                # Play the audio (stoppable by the user's voice)
                 try:
                     audio, sr = self._load_audio(audio_path)
-                    sd.play(audio, sr)
-                    sd.wait()
+                    interrupted = self._play_with_barge_in(audio, sr)
                     # Cleanup
                     os.unlink(audio_path)
+                    if interrupted:
+                        print("\n(Aira stopped mid-sentence - you're speaking.)")
+                        return True
                 except Exception as e:
                     print(f"Audio playback error: {e}")
                     print(f"\n[34mAira:[0m {text}")
@@ -436,6 +479,57 @@ class VoiceAI:
         except Exception as e:
             print(f"TTS error: {e}")
             print(f"\n[34mAira:[0m {text}")
+        return False
+    
+    def _play_with_barge_in(self, audio, sr) -> bool:
+        """Play audio but stop the moment the user starts talking.
+        
+        Returns True if playback was cut short by the user's voice.
+        """
+        if not self.barge_in or not INTERRUPT_AVAILABLE:
+            sd.play(audio, sr)
+            sd.wait()
+            return False
+        try:
+            sd.play(audio, sr)
+            return watch_mic_during_playback(
+                BargeInMonitor(), sample_rate=self.sample_rate)
+        except Exception as e:
+            print(f"Audio playback error: {e}")
+            sd.stop()
+            sd.wait()
+            return False
+    
+    def _check_interrupt_cues(self, partial_audio) -> bool:
+        """Peek at a partial recording; True when Aira should cut in mid-sentence.
+        
+        Transcribes what has been said so far and looks for distress or
+        urgency cues like "help me" or "emergency".
+        """
+        if not (self.user_interrupt_probe and self.use_stt and self.stt):
+            return False
+        try:
+            import scipy.io.wavfile as wav
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                probe_path = tmp.name
+            wav.write(probe_path, self.sample_rate, partial_audio)
+            try:
+                result = self.stt.transcribe(probe_path) or {}
+                text = str(result.get("text", "")).strip()
+            finally:
+                try:
+                    os.unlink(probe_path)
+                except OSError:
+                    pass
+            if not text:
+                return False
+            print(f"(hearing: {text})")
+            if should_aira_interrupt(text):
+                self.user_interrupted = True
+                return True
+        except Exception:
+            return False
+        return False
     
     def _load_audio(self, audio_path: str):
         """Load audio file"""
@@ -489,6 +583,15 @@ class VoiceAI:
                 
                 print(f"\n[36mYou:[0m {user_text}")
                 
+                # Aira cut into the recording: respond to the cue right now
+                if self.user_interrupted:
+                    self.user_interrupted = False
+                    response = ("Stop for a second and breathe - I'm right here. "
+                                "Tell me what's going on.")
+                    print(f"\n[34mAira:[0m {response}")
+                    self._speak(response, emotion='neutral')
+                    continue
+                
                 # Check for exit commands
                 if user_text.lower() in ['goodbye', 'bye', 'quit', 'exit', 'stop']:
                     response = "Goodbye! It was nice talking with you. Have a great day!"
@@ -499,8 +602,9 @@ class VoiceAI:
                 # Generate response
                 response = self._generate_response(user_text, emotion)
                 
-                # Speak response
-                self._speak(response, emotion=emotion.get('emotion', 'neutral'))
+                # Speak response (she can be stopped mid-sentence)
+                if self._speak(response, emotion=emotion.get('emotion', 'neutral')):
+                    print("(She went quiet for you - go ahead.)")
                 
         except KeyboardInterrupt:
             print("\n\nConversation ended by user.")
@@ -542,8 +646,13 @@ class VoiceAI:
                 emotion = {'emotion': 'neutral'}
                 response = self._generate_response(user_text, emotion)
                 
-                # Speak response
-                self._speak(response, emotion='neutral')
+                # Speak response - Ctrl+C while she talks only stops her speech
+                try:
+                    self._speak(response, emotion='neutral')
+                except KeyboardInterrupt:
+                    sd.stop()
+                    sd.wait()
+                    print("\n(Speech stopped - your turn.)")
                 
         except KeyboardInterrupt:
             print("\n\nConversation ended by user.")
@@ -667,6 +776,8 @@ def main():
                         help="Disable Text-to-Speech")
     parser.add_argument("--no-emotion", action="store_true",
                         help="Disable emotion detection")
+    parser.add_argument("--no-barge-in", action="store_true",
+                        help="Disable interrupting Aira while she speaks")
     parser.add_argument("--stt-model", type=str, default="base",
                         choices=["tiny", "base", "small", "medium", "large"],
                         help="Whisper model size")
@@ -688,7 +799,8 @@ def main():
         stt_model=args.stt_model,
         tts_rate=args.tts_rate,
         tts_volume=args.tts_volume,
-        young_female=args.female
+        young_female=args.female,
+        barge_in=not args.no_barge_in
     )
     
     try:
