@@ -67,12 +67,40 @@ def user_wants_silence(text):
 
 
 class BargeInMonitor:
-    """Streak detector: 'n' consecutive loud windows = user is talking."""
+    """Streak detector with an adaptive noise floor.
 
-    def __init__(self, threshold=0.02, required_windows=4, cooldown=0.0):
+    'n' consecutive loud windows = the user is talking. A window only
+    counts as loud when its level beats BOTH the fixed ``threshold``
+    AND ``noise_ratio`` times the running room-noise estimate.
+
+    Why: pure loudness triggers stop Aira for steady noise too (fan,
+    TV, traffic, another conversation nearby). The adaptive floor
+    tracks the background level while it is quiet-ish, raising the
+    bar under it, so only sound that clearly cuts through the room
+    noise — a voice — fires the barge-in.
+
+    Note: a truly blasting continuous noise still cannot be separated
+    from a voice by loudness alone; the floor is capped (_FLOOR_CAP),
+    so anything around/above that level can fire the barge-in. Such
+    rooms are better off with --no-barge-in.
+    """
+
+    # ceiling on the learned noise floor: beyond this, "background" is
+    # loud enough that we'd rather err on the side of stopping for the user
+    _FLOOR_CAP = 0.12
+    # first-window calibration is capped at this multiple of threshold:
+    # wide enough to swallow a hum that was already on when she started
+    # talking, low enough to keep the bar far below a real voice
+    _INIT_FLOOR_FACTOR = 3.0
+
+    def __init__(self, threshold=0.02, required_windows=4, cooldown=0.0,
+                 noise_ratio=2.5, adapt=True):
         self.threshold = float(threshold)
         self.required_windows = int(required_windows)
         self.cooldown = float(cooldown)
+        self.noise_ratio = float(noise_ratio)
+        self.adapt = bool(adapt)
+        self.noise_floor = None   # running estimate of the room's hum
         self._streak = 0
         self._last_trigger = 0.0
         self.triggered = False
@@ -80,13 +108,40 @@ class BargeInMonitor:
     def reset(self):
         self._streak = 0
         self.triggered = False
+        # the learned noise floor is kept on purpose: the room has not changed
+
+    def _is_loud(self, rms):
+        bar = self.threshold
+        if self.noise_floor is not None:
+            bar = max(bar, self.noise_floor * self.noise_ratio)
+        return rms > bar
+
+    def _learn(self, rms):
+        """Update the room-noise estimate from a quiet-ish window."""
+        if not self.adapt:
+            return
+        if self.noise_floor is None:
+            # first window ever: take the mic's word for the room level,
+            # but cap it so a first-window burst cannot raise the bar high
+            self.noise_floor = min(rms,
+                                   self.threshold * self._INIT_FLOOR_FACTOR)
+        else:
+            # slow EMA so a couple of odd windows barely move the floor,
+            # capped so a very loud room scales the bar correctly
+            self.noise_floor = min(0.9 * self.noise_floor + 0.1 * rms,
+                                   self._FLOOR_CAP)
 
     def feed_rms(self, rms):
         """Feed one window's loudness; returns True when barge-in fires."""
-        if rms > self.threshold:
+        if self._is_loud(rms):
             self._streak += 1
+            if self.noise_floor is None:
+                # first-ever window: calibrate even when loud, so a steady
+                # hum that started with playback never reads as a voice
+                self._learn(rms)
         else:
             self._streak = 0
+            self._learn(rms)
         if (self._streak >= self.required_windows
                 and time.time() - self._last_trigger >= self.cooldown):
             self._last_trigger = time.time()
