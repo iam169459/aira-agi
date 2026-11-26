@@ -82,6 +82,17 @@ HEAD = subprocess.run(["git", "-C", REPO, "rev-parse", "--short", "HEAD"],
                       check=True, capture_output=True, text=True).stdout.strip()
 print("Aira repo at commit:", HEAD)
 
+# Drop modules imported from a PREVIOUS run in this same kernel
+# (e.g. an earlier crashed cell): Python caches sys.modules, so without
+# this purge 'from train import train' would return the OLD in-memory
+# code even though the files on disk were just synced to latest.
+import importlib
+for _name in [m for m in sys.modules
+              if getattr(sys.modules[m], "__file__", None)
+              and str(sys.modules[m].__file__).startswith(REPO)]:
+    del sys.modules[_name]
+importlib.invalidate_caches()
+
 from train import train, PRESETS   # noqa: E402
 
 # --------------------------------------------------- 3) no-GPU guard ------
