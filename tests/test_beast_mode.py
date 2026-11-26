@@ -81,7 +81,7 @@ def test_consent_profiles():
         check("revoked loses coverage", store.get("mine") is None)
 
     from modules.cyber_tools import clitool, __version__ as ct_version
-    check("toolkit version current", ct_version == "2.3.0", ct_version)
+    check("toolkit version current", ct_version == "2.4.0", ct_version)
     check("clitool has consent helpers",
           callable(clitool._apply_profile) and callable(clitool._consent))
 

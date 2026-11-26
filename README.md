@@ -10,7 +10,8 @@
 - **A voice made from zero** — text-to-speech and speech-to-text built on pure numpy (`modules/natural_speech/`): grapheme-to-phoneme, glottal-pulse synthesis, prosody. She sounds human, and her voice changes with her mood.
 - **A personality** — Aira answers in her own voice, picks up your mood, and tunes how creative or steady her answers are depending on it.
 - **Hands for everyday tasks** — built-in tool skills (`ai_core/tools.py` + `ai_core/more_tools.py`): exact arithmetic, unit conversion, persistent notes, safe file reading, base64/JSON handling, hashing, secure password and UUID generation, dice/coin randomness, system status, and a full skills directory — just ask ("convert 5 km to miles", "generate a strong password 24", "what can you do").
-- **A security toolkit** — defensive auditing plus authorized-target testing (`modules/cyber_tools/`), with a hacking knowledge base that teaches her what to look for and how to fix it.
+- **A security toolkit** — defensive auditing plus authorized-target testing (`modules/cyber_tools/`), with a hacking knowledge base that teaches her what to look for and how to fix it — now with a **consent-gated offense pack** (`offense.py`): kill-chain attack simulation that refuses to run without `authorized=True` or a consent profile, even on localhost, and always ends in defense findings.
+- **Weapon knowledge, facts only** — ask her about weapon classes, history timeline and arms-control treaties (`modules/weapon_encyclopedia.py`): NPT, CWC, BWC and friends, deterrence doctrine, tech at a glance. Any how-to phrasing gets a clear refusal — never build/usage instructions.
 - **Developer skills** — she can audit code and dependencies (`modules/dev_tools/`), and rewrite her own source through staged, audited, cancellable proposals (`ai_core/selfedit.py`).
 - **Self-updating** — ask Aira to check for updates or update herself (`ai_core/updater.py`): she compares with `origin/main`, fast-forwards only, and refuses to touch uncommitted work. Fetched code loads on your next restart.
 
@@ -86,10 +87,11 @@ Aira's security tools only touch targets **you own or have permission to test**.
 
 ## Testing
 
-The whole suite is green — **615 checks across 15 suites, 0 failures** —
+The whole suite is green — **680 checks across 17 suites, 0 failures** —
 covering the voice engine, the transformer, the tokenizer (char +
 byte-level BPE), RoPE positional encoding, the agent brain, the tool
-skills, the daemon, cybersecurity tooling, developer skills, and the
+skills, the daemon, cybersecurity tooling (defense + consent-gated
+offense), the weapons-knowledge encyclopedia, developer skills, and the
 two-way interruption system:
 
 | Suite | Checks | Suite | Checks |
@@ -98,10 +100,11 @@ two-way interruption system:
 | test_aira_tools | 21 | test_agi_integration | 18 |
 | test_more_tools | 31 | test_cyber_advanced | 38 |
 | test_selfedit | 28 | test_cyber_professional | 50 |
-| test_beast_mode | 92 | test_natural_speech | 42 |
+| test_beast_mode | 93 | test_natural_speech | 42 |
 | test_dev_skills | 55 | test_interrupt | 83 |
 | test_cyber_tools | 48 | test_tokenizer | 43 |
-| | | test_rope | 20 |
+| test_cyber_offense | 19 | test_rope | 24 |
+| | | test_weapon_encyclopedia | 41 |
 
 ```bash
 python -m pytest tests/ -q        # if you have pytest
