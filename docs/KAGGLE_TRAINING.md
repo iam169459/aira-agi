@@ -83,10 +83,15 @@ Notes:
 1. Open https://www.kaggle.com → New Notebook.
 2. **Settings → Accelerator → GPU T4 x2.**
 3. **Settings → Internet → On** (only needed for the `git clone`).
-4. Add the code cells below — or if you prefer **everything in one
-   single cell**, paste the contents of
-   [`scripts/kaggle_one_cell.py`](../scripts/kaggle_one_cell.py) (or
-   upload [`scripts/kaggle_train.ipynb`](../scripts/kaggle_train.ipynb)):
+4. Add the code cells below — or paste a ready-made cell:
+   - **`scripts/kaggle_dynamic_cell.py`** — *recommended*: one cell that
+     auto-detects 1x vs 2x T4 (GPU count + VRAM), picks the best preset
+     automatically, prints a wall-clock estimate, and still honors the
+     one-model resume loop.
+   - [`scripts/kaggle_one_cell.py`](../scripts/kaggle_one_cell.py) —
+     simpler single-cell option (fixed `nova` preset).
+   - [`scripts/kaggle_train.ipynb`](../scripts/kaggle_train.ipynb) —
+     multi-cell notebook.
 
 **Cell 1 — sanity check:**
 ```python
