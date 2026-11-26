@@ -256,6 +256,41 @@ def test_data_parallel_amp_compatibility():
     check("replica forward runs", out_rep.shape == (1, 20, 200))
 
 
+def test_data_parallel_loss_gather():
+    print("\n[8] DataParallel scalar-loss gather (the 2xT4 backward "
+          "crash)")
+    # DataParallel gathers each replica's SCALAR loss into a 1-D vector;
+    # backward() then refuses it ("grad can be implicitly created only
+    # for scalar outputs"). train._dp_scalar re-means the vector -
+    # correct because replicas split the batch evenly.
+    from train import _dp_scalar
+    check("scalar loss passes through unchanged",
+          _dp_scalar(torch.tensor(2.5)).dim() == 0)
+    vec = torch.tensor([2.0, 3.0])
+    check("gathered loss vector re-means to full-batch mean",
+          abs(_dp_scalar(vec).item() - 2.5) < 1e-6)
+    check("None loss passes through", _dp_scalar(None) is None)
+    check("1-element vector (single replica gather) stays scalar-mean",
+          _dp_scalar(torch.tensor([9.0])).dim() == 0)
+    # end-to-end: pre-fix this exact sequence raised RuntimeError
+    a = torch.tensor(2.0, requires_grad=True)
+    b = torch.tensor(3.0, requires_grad=True)
+    loss = _dp_scalar(torch.stack([a, b])) / 8   # GRAD_ACCUM-style scale
+    loss.backward()
+    # d((2.5/8))/da = 1/(2*8) = 0.0625 for each replica term
+    check("backward on gathered-then-fixed loss works",
+          a.grad is not None and abs(a.grad.item() - 0.0625) < 1e-9,
+          str(a.grad))
+    # train.py loop and estimate_loss pass through _dp_scalar
+    import inspect
+    import train as train_mod
+    src = inspect.getsource(train_mod)
+    check("train loop uses _dp_scalar",
+          "loss = _dp_scalar(loss) / GRAD_ACCUM" in src)
+    check("estimate_loss uses _dp_scalar",
+          "_dp_scalar(loss).item()" in src)
+
+
 def main():
     test_construction_compat()
     test_rotation_math()
@@ -264,6 +299,7 @@ def main():
     test_generation_beyond_block()
     test_train_and_checkpoint_roundtrip()
     test_data_parallel_amp_compatibility()
+    test_data_parallel_loss_gather()
     print(f"\n{'=' * 50}")
     print(f"PASSED: {PASS}  FAILED: {FAIL}")
     return FAIL == 0
