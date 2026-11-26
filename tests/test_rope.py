@@ -346,6 +346,60 @@ def test_early_stopping():
     check("CLI --patience flag exists", "--patience" in src)
 
 
+def test_patience_neutral_resume():
+    print("\n[10] Resume tie at the resumed step burns no patience")
+    import io
+    import os
+    import tempfile
+    from contextlib import redirect_stdout
+    import train as train_mod
+
+    tmp = tempfile.mkdtemp()
+    os.makedirs(os.path.join(tmp, "data"))
+    os.makedirs(os.path.join(tmp, "out"))
+    text = ("the quick brown fox jumps over the lazy dog. " * 40
+            + "aira is an offline ai assistant built from scratch. " * 20)
+    text += ("zebras wander through violet meadows quietly. "
+             "purple mountains echo with forgotten songs. " * 6)
+    with open(os.path.join(tmp, "data", "small.txt"), "w") as fh:
+        fh.write(text)
+    out = os.path.join(tmp, "out", "aira_model.pt")
+
+    # Run A: overfit fast with patience=1 so early stopping fires at the
+    # FIRST non-improving eval; the saved checkpoint is then the best
+    # eval step (a multiple of eval_every) with its best_val recorded -
+    # exactly the state a Kaggle session resume starts from.
+    train_mod.train("tiny", steps=400, data_file="small.txt", out_path=out,
+                    root=tmp, patience=1, eval_every=10, fresh=True)
+    ck_a = torch.load(out, map_location="cpu", weights_only=False)
+    check("run A stopped early at an eval boundary",
+          ck_a["step"] < 400 and ck_a["step"] % 10 == 0
+          and ck_a.get("best_val") is not None,
+          f"step={ck_a['step']} best_val={ck_a.get('best_val')}")
+
+    # Run B: resume that same checkpoint. Its first eval happens BEFORE
+    # any optimizer step on identical weights + data, so val ties the
+    # stored best_val EXACTLY. That tie must be patience-neutral: no
+    # "val not improving" line, no early stop - the run must train its
+    # step and finish normally.
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        train_mod.train("tiny", steps=1, data_file="small.txt",
+                        out_path=out, root=tmp, patience=1,
+                        eval_every=10, fresh=False)
+    log = buf.getvalue()
+    check("resume tie prints no 'val not improving'",
+          "val not improving" not in log, log.strip().splitlines()[-1:])
+    check("resume tie does not early-stop", "Early-stopped" not in log)
+    ck_b = torch.load(out, map_location="cpu", weights_only=False)
+    check("run after resume tie trained its step",
+          ck_b["step"] == ck_a["step"] + 1,
+          f"{ck_b['step']} vs {ck_a['step']}")
+    check("resume tie kept the recorded best_val",
+          ck_b.get("best_val") == ck_a["best_val"],
+          f"{ck_b.get('best_val')} vs {ck_a['best_val']}")
+
+
 def main():
     test_construction_compat()
     test_rotation_math()
@@ -356,6 +410,7 @@ def main():
     test_data_parallel_amp_compatibility()
     test_data_parallel_loss_gather()
     test_early_stopping()
+    test_patience_neutral_resume()
     print(f"\n{'=' * 50}")
     print(f"PASSED: {PASS}  FAILED: {FAIL}")
     return FAIL == 0

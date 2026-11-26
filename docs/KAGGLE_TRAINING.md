@@ -207,7 +207,7 @@ the cheapest quality lever besides the corpus itself.
 
 ## 8. Troubleshooting
 
-Early stopping (default `--patience 10`): training saves the checkpoint **only when the validation loss improves**; after 10 evals with no improvement the run ends early, restores the best weights, and `aira_model.pt` holds the best model — never an overfit one. `best_val` is stored inside the checkpoint so best-tracking continues across sessions.
+Early stopping (default `--patience 10`): training saves the checkpoint **only when the validation loss improves**; after 10 evals with no improvement the run ends early, restores the best weights, and `aira_model.pt` holds the best model — never an overfit one. `best_val` is stored inside the checkpoint so best-tracking continues across sessions. Evals that run before any optimizer step (step 0, or the first eval right after a resume) are patience-neutral: a tie with the stored `best_val` there is expected and burns no patience unit.
 
 | Symptom | Cause | Fix |
 |---|---|---|

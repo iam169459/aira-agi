@@ -87,7 +87,7 @@ Aira's security tools only touch targets **you own or have permission to test**.
 
 ## Testing
 
-The whole suite is green — **693 checks across 17 suites, 0 failures** —
+The whole suite is green — **698 checks across 17 suites, 0 failures** —
 covering the voice engine, the transformer, the tokenizer (char +
 byte-level BPE), RoPE positional encoding, the agent brain, the tool
 skills, the daemon, cybersecurity tooling (defense + consent-gated
@@ -103,7 +103,7 @@ two-way interruption system:
 | test_beast_mode | 93 | test_natural_speech | 42 |
 | test_dev_skills | 55 | test_interrupt | 83 |
 | test_cyber_tools | 48 | test_tokenizer | 43 |
-| test_cyber_offense | 19 | test_rope | 37 |
+| test_cyber_offense | 19 | test_rope | 42 |
 | | | test_weapon_encyclopedia | 41 |
 
 ```bash
