@@ -42,6 +42,8 @@ STEPS = None        # None = preset default; set an int to limit this run
 TOKENIZER = None    # None = preset choice | "bpe" | "char"
 VOCAB_SIZE = None   # None = preset choice (nova: 4096)
 ROPE = None         # None = preset choice | True | False
+FRESH = False       # True = ignore the attached checkpoint, start over
+PATIENCE = None     # None = 10 evals | int | 0 disables early stopping
 
 # Rough measured wall-clock on 1x T4, minutes per 1000 optimizer steps.
 MINUTES_PER_1K = {"tiny": None, "base": None, "beast": 8, "xl": 25,
@@ -104,8 +106,9 @@ if gpus == 0 and PRESET in HEAVY:
     PRESET = "tiny"
 
 # ------------------------------------------ 4) previous checkpoint --------
-prev = glob.glob("/kaggle/input/*/aira_model.pt") or \
-       ([OUT] if os.path.exists(OUT) else [])
+prev = [] if FRESH else \
+    (glob.glob("/kaggle/input/*/aira_model.pt") or
+     ([OUT] if os.path.exists(OUT) else []))
 if prev and prev[0] != OUT:
     shutil.copy(prev[0], OUT)
     print(f"Found previous checkpoint ({prev[0]}) — resuming your ONE "
@@ -137,8 +140,12 @@ print("Plan:", " | ".join(plan))
 # ------------------------------------------------------------ 6) train ----
 # Resumes automatically if the checkpoint's architecture matches; the
 # overrides below (None values) defer to the preset's own choices.
+# Early stopping keeps the BEST checkpoint: once val loss stops improving
+# (memorization of a small corpus), the run ends and the best weights
+# stay in aira_model.pt.
 kw = {k: v for k, v in dict(steps=STEPS, tokenizer=TOKENIZER,
-                            vocab_size=VOCAB_SIZE, rope=ROPE).items()
+                            vocab_size=VOCAB_SIZE, rope=ROPE,
+                            patience=PATIENCE).items()
       if v is not None}
 train(PRESET, out_path=OUT, **kw)
 

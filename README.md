@@ -6,7 +6,7 @@
 
 ## What's inside
 
-- **A brain that talks** — a custom emotion-aware transformer (`ai_core/`) with modern sampling controls, conversation memory that survives restarts, and always-on supervision so Aira never fully "sleeps".
+- **A brain that talks** — a custom emotion-aware transformer (`ai_core/`) with modern sampling controls, conversation memory that survives restarts, and always-on supervision so Aira never fully "sleeps". Training has built-in **early stopping**: when the validation loss stops improving (she has memorized a small corpus), the run ends and the **best** checkpoint is kept — `aira_model.pt` never degrades from overfitting.
 - **A voice made from zero** — text-to-speech and speech-to-text built on pure numpy (`modules/natural_speech/`): grapheme-to-phoneme, glottal-pulse synthesis, prosody. She sounds human, and her voice changes with her mood.
 - **A personality** — Aira answers in her own voice, picks up your mood, and tunes how creative or steady her answers are depending on it.
 - **Hands for everyday tasks** — built-in tool skills (`ai_core/tools.py` + `ai_core/more_tools.py`): exact arithmetic, unit conversion, persistent notes, safe file reading, base64/JSON handling, hashing, secure password and UUID generation, dice/coin randomness, system status, and a full skills directory — just ask ("convert 5 km to miles", "generate a strong password 24", "what can you do").
@@ -87,7 +87,7 @@ Aira's security tools only touch targets **you own or have permission to test**.
 
 ## Testing
 
-The whole suite is green — **687 checks across 17 suites, 0 failures** —
+The whole suite is green — **693 checks across 17 suites, 0 failures** —
 covering the voice engine, the transformer, the tokenizer (char +
 byte-level BPE), RoPE positional encoding, the agent brain, the tool
 skills, the daemon, cybersecurity tooling (defense + consent-gated
@@ -103,7 +103,7 @@ two-way interruption system:
 | test_beast_mode | 93 | test_natural_speech | 42 |
 | test_dev_skills | 55 | test_interrupt | 83 |
 | test_cyber_tools | 48 | test_tokenizer | 43 |
-| test_cyber_offense | 19 | test_rope | 31 |
+| test_cyber_offense | 19 | test_rope | 37 |
 | | | test_weapon_encyclopedia | 41 |
 
 ```bash

@@ -26,6 +26,8 @@ REPO = "/kaggle/working/aira-agi"
 PRESET = "auto"     # "auto" or a specific preset name
 STEPS = None        # None = preset default; set an int to limit this run
 OUT = "/kaggle/working/aira_model.pt"
+FRESH = False       # True = ignore the attached checkpoint, start over
+PATIENCE = None     # None = 10 evals | int | 0 disables early stopping
 
 # Rough measured wall-clock on 1x T4, minutes per 1000 optimizer steps.
 MINUTES_PER_1K = {"tiny": None, "base": None, "beast": 8, "xl": 25,
@@ -107,8 +109,9 @@ if PRESET == "auto":
 else:
     why = "manually selected"
 
-prev = glob.glob("/kaggle/input/*/aira_model.pt") or \
-       ([OUT] if os.path.exists(OUT) else [])
+prev = [] if FRESH else \
+    (glob.glob("/kaggle/input/*/aira_model.pt") or
+     ([OUT] if os.path.exists(OUT) else []))
 if prev and prev[0] != OUT:
     shutil.copy(prev[0], OUT)
     print(f"Found previous checkpoint ({prev[0]}) — resuming your ONE model")
@@ -122,7 +125,11 @@ print(f"Plan: preset={PRESET} ({why}) | steps={steps_for_estimate} "
       f"| {estimate(PRESET, gpus, steps_for_estimate)}")
 
 # ------------------------------------------------------------------ train --
-kw = {} if STEPS is None else {"steps": STEPS}
+# Early stopping keeps the BEST checkpoint: once val loss stops improving
+# (memorization of a small corpus), the run ends and the best weights
+# stay in aira_model.pt.
+kw = {k: v for k, v in dict(steps=STEPS, patience=PATIENCE).items()
+      if v is not None}
 from train import train
 train(PRESET, out_path=OUT, **kw)
 

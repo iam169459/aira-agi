@@ -207,6 +207,8 @@ the cheapest quality lever besides the corpus itself.
 
 ## 8. Troubleshooting
 
+Early stopping (default `--patience 10`): training saves the checkpoint **only when the validation loss improves**; after 10 evals with no improvement the run ends early, restores the best weights, and `aira_model.pt` holds the best model — never an overfit one. `best_val` is stored inside the checkpoint so best-tracking continues across sessions.
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | `GPUs: 0` in Cell 1 | accelerator not enabled | Settings → GPU T4 x2, save |
@@ -214,7 +216,7 @@ the cheapest quality lever besides the corpus itself.
 | Resume raises model-size error | checkpoint from a different preset size | matching preset resumes; else `--fresh`/`--out` |
 | Resume raises tokenizer error | char↔BPE checkpoint mismatch | same — deliberate switch, `--fresh` or `--out` |
 | Resume raises `rope=` mismatch | mixed positional schemes | same pattern |
-| Train loss 0.02, val loss flat | overfitting (corpus < model) | §6: grow corpus, or stop earlier |
+| Train loss 0.02, val loss flat/rising | overfitting (corpus < model) | automatic since PR #30: **early stopping** ends the run after 10 non-improving evals and keeps the BEST checkpoint (`--patience 0` disables; `--patience N` tunes). Real fix: §6 grow corpus |
 | Session died mid-run | 12 h cap | §5: checkpoint is on disk at last eval; reattach + copy + rerun |
 | Generation rambling/nonsense | model still young | more steps and/or corpus; try lower `--temperature` in `generate.py` |
 

@@ -132,14 +132,20 @@ def main():
                         help="rotary position embeddings (Llama/Mistral "
                              "style): generation is no longer capped at "
                              "block_size (nova enables this by default)")
+    parser.add_argument("--patience", type=int, default=10,
+                        help="early stopping: stop after this many evals "
+                             "without a val-loss improvement and keep the "
+                             "best checkpoint (0 = train all steps; "
+                             "default: 10)")
     args = parser.parse_args()
     train(args.preset, steps=args.steps, data_file=args.data,
           out_path=args.out, fresh=args.fresh,
           tokenizer=args.tokenizer, vocab_size=args.vocab_size,
-          rope=args.rope)
+          rope=args.rope, patience=args.patience)
 
 
 def train(preset="tiny", steps=None, data_file=None, out_path=None,
+          patience=None, eval_every=None,
           root=ROOT, fresh=False, tokenizer=None, vocab_size=None,
           rope=None):
     """Train EmotionAwareGPT into one growing checkpoint.
@@ -167,7 +173,10 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     BLOCK_SIZE = cfg["block_size"]
     BATCH_SIZE = cfg["batch_size"]
     GRAD_ACCUM = cfg.get("grad_accum", 1)
-    EVAL_EVERY = cfg["eval_every"]
+    EVAL_EVERY = eval_every or cfg["eval_every"]
+    # Early stopping: when the validation loss has not improved for this
+    # many evals, stop and keep the best checkpoint. 0 disables it.
+    PATIENCE = patience if patience is not None else 10
     LEARNING_RATE = cfg["lr"]
     N_EMBD = cfg["n_embd"]
     N_HEAD = cfg["n_head"]
@@ -348,6 +357,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
                 "config": config,
                 "step": current_step,
                 "optimizer": optimizer.state_dict(),
+                "best_val": best_val if best_val != float("inf") else None,
                 **blob,
             },
             CHECKPOINT,
@@ -356,6 +366,11 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
 
     model.train()
     step = resume_state.get("step", 0) if resume_state is not None else 0
+    best_val = float("inf")
+    if resume_state is not None:
+        best_val = resume_state.get("best_val", best_val)
+    patience_left = PATIENCE
+    stopped_early = False
     for micro in range(steps * GRAD_ACCUM):
         x, y = get_batch(train_data)
         _, loss = model(x, targets=y)
@@ -367,8 +382,22 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         if (micro + 1) % GRAD_ACCUM:
             continue
         if step % EVAL_EVERY == 0:
-            print(f"step {step}: {estimate_loss()}")
-            save_checkpoint(step)
+            metrics = estimate_loss()
+            print(f"step {step}: {metrics}")
+            if PATIENCE <= 0:
+                save_checkpoint(step)
+            elif metrics["val"] < best_val - 1e-4:
+                # genuine improvement - keep this checkpoint
+                best_val = metrics["val"]
+                patience_left = PATIENCE
+                save_checkpoint(step)
+            else:
+                patience_left -= 1
+                print(f"  val not improving (best {best_val:.4f}) - "
+                      f"early stop in {patience_left} evals")
+                if patience_left <= 0:
+                    stopped_early = True
+                    break
         if scaler is not None:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -380,8 +409,21 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         optimizer.zero_grad(set_to_none=True)
         step += 1
 
+    if stopped_early:
+        # the file already holds the best-val checkpoint; sync the live
+        # model to it so the session ends consistent with what's saved
+        best_state = torch.load(CHECKPOINT, map_location=device,
+                                weights_only=False)
+        net.load_state_dict(best_state["model"])
+        step = best_state["step"]
+        print(f"Early-stopped: kept the best checkpoint "
+              f"(step {step}, val {best_val:.4f}).")
+        print("TIP: val loss rising while train loss falls means Aira has "
+              "memorized this corpus - grow data/ (see "
+              "docs/KAGGLE_TRAINING.md) before more steps help.")
     print("Final loss:", estimate_loss())
-    save_checkpoint(step)
+    if not stopped_early:
+        save_checkpoint(step)
 
 
 if __name__ == "__main__":

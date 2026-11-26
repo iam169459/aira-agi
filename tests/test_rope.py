@@ -291,6 +291,61 @@ def test_data_parallel_loss_gather():
           "_dp_scalar(loss).item()" in src)
 
 
+def test_early_stopping():
+    print("\n[9] Early stopping keeps the best checkpoint")
+    import os
+    import tempfile
+    import train as train_mod
+
+    tmp = tempfile.mkdtemp()
+    os.makedirs(os.path.join(tmp, "data"))
+    os.makedirs(os.path.join(tmp, "out"))
+    text = ("the quick brown fox jumps over the lazy dog. " * 40
+            + "aira is an offline ai assistant built from scratch. " * 20)
+    # Distinctive val tail: the val split is the END of the file, so a
+    # tail of different sentences guarantees memorizing the repeated body
+    # does NOT improve the val loss - the early-stop trigger is reliable.
+    text += ("zebras wander through violet meadows quietly. "
+             "seventeen clocks chimed beneath the amber sky. "
+             "purple mountains echo with forgotten songs. " * 6)
+    with open(os.path.join(tmp, "data", "small.txt"), "w") as fh:
+        fh.write(text)
+    out = os.path.join(tmp, "out", "aira_model.pt")
+
+    # 347k params vs 2.8KB corpus -> val bottoms out quickly, then rises
+    train_mod.train("tiny", steps=400, data_file="small.txt", out_path=out,
+                    root=tmp, patience=1, eval_every=10, fresh=True)
+    ck = torch.load(out, map_location="cpu", weights_only=False)
+    check("early stop ended before the step budget", ck["step"] < 400,
+          f"step={ck['step']}")
+    check("checkpoint records the best val", ck.get("best_val") is not None
+          and ck["best_val"] < 3.0, str(ck.get("best_val")))
+    # the saved model must be the BEST one (step 30 in the trace above),
+    # not the last (overfit) step - its recorded step proves which
+    check("saved step equals the best-val step", ck["step"] == 30,
+          f"step={ck['step']} best_val={ck.get('best_val')}")
+    # the saved weights load cleanly into a fresh model built from the
+    # checkpoint's own config (tiny preset here = rope off, pos_emb on)
+    from ai_core.model import EmotionAwareGPT
+    cfg = dict(ck["config"])
+    model = EmotionAwareGPT(28, cfg)
+    model.load_state_dict(ck["model"])
+    check("best-checkpoint weights load cleanly", True)
+
+    # patience=0 disables early stopping entirely
+    out2 = os.path.join(tmp, "out", "full.pt")
+    train_mod.train("tiny", steps=15, data_file="small.txt", out_path=out2,
+                    root=tmp, patience=0, eval_every=5, fresh=True)
+    ck2 = torch.load(out2, map_location="cpu", weights_only=False)
+    check("patience=0 trains the full budget", ck2["step"] >= 15,
+          f"step={ck2['step']}")
+
+    # CLI exposes --patience
+    import inspect
+    src = inspect.getsource(train_mod.main)
+    check("CLI --patience flag exists", "--patience" in src)
+
+
 def main():
     test_construction_compat()
     test_rotation_math()
@@ -300,6 +355,7 @@ def main():
     test_train_and_checkpoint_roundtrip()
     test_data_parallel_amp_compatibility()
     test_data_parallel_loss_gather()
+    test_early_stopping()
     print(f"\n{'=' * 50}")
     print(f"PASSED: {PASS}  FAILED: {FAIL}")
     return FAIL == 0
