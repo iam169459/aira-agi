@@ -7,7 +7,9 @@ Paste this entire file as a single cell in a fresh Kaggle notebook
 
 It:
   1. verifies GPUs (DataParallel turns on automatically with 2x T4),
-  2. clones the repo,
+  2. clones the repo - or syncs an existing clone to origin/main
+     (fetch + hard reset; the repo dir holds no state, so stale old
+     code from a crashed session can never run again),
   3. picks up a previous session's checkpoint (attached as a Kaggle
      Dataset) so your ONE model keeps growing across the 12h cap,
   4. prints a wall-clock estimate, then trains.
@@ -60,12 +62,25 @@ if gpus >= 2:
           "(~1.8x faster).")
 
 # ------------------------------------------------------------- 2) repo ----
-if not os.path.exists(REPO):
+# ALWAYS run the latest code: a fresh notebook gets a fresh clone, and a
+# reused notebook is synced to origin/main (fetch + hard reset). A stale
+# clone would silently rerun old, already-fixed code. The repo dir is
+# disposable (all state lives in aira_model.pt), so a hard reset is safe.
+HEAD = None
+if os.path.exists(REPO):
+    subprocess.run(["git", "-C", REPO, "fetch", "origin", "main"],
+                   check=True)
+    subprocess.run(["git", "-C", REPO, "reset", "--hard", "origin/main"],
+                   check=True)
+else:
     subprocess.run(["git", "clone",
                     "https://github.com/iam169459/aira-agi.git", REPO],
                    check=True)
 os.chdir(REPO)
 sys.path.insert(0, REPO)
+HEAD = subprocess.run(["git", "-C", REPO, "rev-parse", "--short", "HEAD"],
+                      check=True, capture_output=True, text=True).stdout.strip()
+print("Aira repo at commit:", HEAD)
 
 from train import train, PRESETS   # noqa: E402
 

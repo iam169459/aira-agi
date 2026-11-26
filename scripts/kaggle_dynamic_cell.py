@@ -70,12 +70,23 @@ def estimate(preset, gpus, steps):
 
 
 # ------------------------------------------------------------------ setup --
-if not os.path.exists(REPO):
+# ALWAYS run the latest code: fresh notebook = fresh clone; reused
+# notebook = fetch + hard reset to origin/main (the repo dir is
+# disposable; your model state lives in aira_model.pt, not here).
+if os.path.exists(REPO):
+    subprocess.run(["git", "-C", REPO, "fetch", "origin", "main"],
+                   check=True)
+    subprocess.run(["git", "-C", REPO, "reset", "--hard", "origin/main"],
+                   check=True)
+else:
     subprocess.run(["git", "clone",
                     "https://github.com/iam169459/aira-agi.git", REPO],
                    check=True)
 os.chdir(REPO)
 sys.path.insert(0, REPO)
+print("Aira repo at commit:", subprocess.run(
+    ["git", "rev-parse", "--short", "HEAD"], check=True,
+    capture_output=True, text=True).stdout.strip())
 
 gpus, vram_total = gpu_report()
 
