@@ -150,7 +150,7 @@ def test_exports_and_cli():
                                      TECHNIQUES, technique_lookup)
     from modules.dev_tools import __version__ as dev_version
 
-    check("cyber toolkit 2.3.0", cyber_version == "2.3.0", cyber_version)
+    check("cyber toolkit 2.4.0", cyber_version == "2.4.0", cyber_version)
     check("dev tools 1.0.0", dev_version == "1.0.0", dev_version)
     check("re-exported knowledge", len(TECHNIQUES) >= 15
           and callable(technique_lookup))

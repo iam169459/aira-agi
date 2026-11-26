@@ -32,8 +32,12 @@ from .fingerprint import (fingerprint_http, dir_probe, service_banner,
                           cipher_audit, DEFAULT_DIR_WORDS)
 from .reporting import (build_report, collect_findings, render_markdown,
                         render_html, save_report, SEVERITY_ORDER)
+from .offense import (ConsentRequired, strict_gate, recon_sweep,
+                      attack_surface, web_probe_suite, run_offense,
+                      kill_chain, KILL_CHAIN_PHASES,
+                      DEFAULT_SUBDOMAIN_WORDS)
 
-__version__ = "2.3.0"
+__version__ = "2.4.0"
 
 __all__ = [
     "require_authorization", "guard", "ConsentStore", "target_covered",
@@ -55,4 +59,7 @@ __all__ = [
     "DEFAULT_DIR_WORDS",
     "build_report", "collect_findings", "render_markdown", "render_html",
     "save_report", "SEVERITY_ORDER",
+    "ConsentRequired", "strict_gate", "recon_sweep", "attack_surface",
+    "web_probe_suite", "run_offense", "kill_chain", "KILL_CHAIN_PHASES",
+    "DEFAULT_SUBDOMAIN_WORDS",
 ]

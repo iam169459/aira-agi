@@ -202,6 +202,11 @@ class ToolRegistry:
         ))
         from ai_core import more_tools
         more_tools.register(self, Tool)
+        try:
+            from ai_core import weapon_skills
+            weapon_skills.register(self, Tool)
+        except ImportError:            # optional pack
+            pass
 
     def _editor(self):
         if self.root not in self.editors:
