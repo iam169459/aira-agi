@@ -289,11 +289,11 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
             model.load_state_dict(
                 fuse_legacy_state_dict(resume_state["model"]))
     if use_amp:
-        _fp_forward = model.forward
-        def amp_forward(*fwd_args, **fwd_kwargs):
-            with torch.autocast("cuda", dtype=amp_dtype):
-                return _fp_forward(*fwd_args, **fwd_kwargs)
-        model.forward = amp_forward
+        # autocast lives INSIDE the model (see model.amp_dtype): an
+        # attribute is copied into every DataParallel replica, whereas an
+        # externally replaced forward() would keep calling the original
+        # cuda:0 module from inside every replica.
+        model.amp_dtype = amp_dtype
     if ndev > 1:
         model = torch.nn.DataParallel(model)
     print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")

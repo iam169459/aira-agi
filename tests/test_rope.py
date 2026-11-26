@@ -225,6 +225,37 @@ def test_train_and_checkpoint_roundtrip():
               and nova["rope"] is True and nova["vocab_size"] == 4096)
 
 
+def test_data_parallel_amp_compatibility():
+    print("\n[7] DataParallel + AMP: forward must run on the replica "
+          "itself")
+    # The old train.py replaced model.forward with a closure bound to the
+    # ORIGINAL module, so every DataParallel replica kept calling the
+    # cuda:0 weights (device mismatch on GPUs). The AMP dtype must be a
+    # plain attribute so it (and the call path) travels with replicas.
+    model = make_model(rope=True)
+    model.amp_dtype = torch.bfloat16          # as train.py sets it on CUDA
+    replica = model._replicate_for_data_parallel()
+    check("replica carries the amp attribute", replica.amp_dtype
+          is torch.bfloat16)
+    # THE bug detector: 'forward' must resolve on the replica's class,
+    # bound to the replica itself. The old train.py stuffed a closure into
+    # instance.__dict__; replication shallow-copies that dict, so every
+    # replica kept calling the ORIGINAL module (cuda:0) — exactly the
+    # "index is on cuda:1, different from other tensors on cuda:0" crash.
+    import types
+    own_forward = replica.__dict__.get("forward")
+    check("no replaced forward in replica __dict__", own_forward is None,
+          f"found {type(own_forward).__name__} in instance dict")
+    check("replica.forward bound to the replica itself",
+          isinstance(replica.forward, types.MethodType)
+          and replica.forward.__self__ is replica)
+    torch.manual_seed(11)
+    x = torch.randint(0, 200, (1, 20))
+    with torch.no_grad():
+        out_rep = replica(x)
+    check("replica forward runs", out_rep.shape == (1, 20, 200))
+
+
 def main():
     test_construction_compat()
     test_rotation_math()
@@ -232,6 +263,7 @@ def main():
     test_cache_and_windows()
     test_generation_beyond_block()
     test_train_and_checkpoint_roundtrip()
+    test_data_parallel_amp_compatibility()
     print(f"\n{'=' * 50}")
     print(f"PASSED: {PASS}  FAILED: {FAIL}")
     return FAIL == 0

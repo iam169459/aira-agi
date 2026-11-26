@@ -191,6 +191,11 @@ class EmotionAwareGPT(nn.Module):
         self.use_rope = bool(cfg.get("rope", False))
 
         self.block_size = block_size
+        # Mixed precision: set `model.amp_dtype` (e.g. torch.bfloat16)
+        # instead of replacing forward() — an instance attribute is copied
+        # into every DataParallel replica, while a replaced forward() is
+        # not (the closure stays bound to the original cuda:0 module).
+        self.amp_dtype = None
         self.token_emb = nn.Embedding(vocab_size, n_embd)
         self.pos_emb = (None if self.use_rope
                         else nn.Embedding(block_size, n_embd))
@@ -205,6 +210,13 @@ class EmotionAwareGPT(nn.Module):
         self.head = nn.Linear(n_embd, vocab_size)
 
     def forward(self, idx, emotion_id=None, targets=None, rope_offset=0):
+        if self.amp_dtype is not None and idx.is_cuda:
+            with torch.autocast("cuda", dtype=self.amp_dtype):
+                return self._forward_impl(idx, emotion_id, targets,
+                                          rope_offset)
+        return self._forward_impl(idx, emotion_id, targets, rope_offset)
+
+    def _forward_impl(self, idx, emotion_id, targets, rope_offset):
         t = idx.size(1)
         x = self.token_emb(idx)
         if self.pos_emb is not None:
