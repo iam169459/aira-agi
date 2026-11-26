@@ -24,43 +24,39 @@ python voice_ai.py --mode command
 
 ## 🎯 Training for Specific Use Cases
 
+Aira has ONE growing model — `aira_model.pt`. Every training command
+resumes and grows the same file (auto-resume, periodic saves). Pick
+whatever matches the use case:
+
 ### 1. Coding Assistant
 ```bash
-# Generate training script
-python scripts/train_configs.py --generate coding > train_coding.py
-
-# Train model (creates coding_model.pt)
-python train_coding.py
-
-# Use the model
-python scripts/generate.py --checkpoint coding_model.pt --prompt "Write a Python function"
+python train.py --preset base --data code_corpus.txt
+python generate.py --prompt "def aira_think():"
 ```
 
 ### 2. Daily Conversation AI
 ```bash
-# Generate training script
-python scripts/train_configs.py --generate daily > train_daily.py
-
-# Train model (creates daily_model.pt)
-python train_daily.py
-
-# Use the model
-python scripts/generate.py --checkpoint daily_model.pt --prompt "What should I cook?"
+python train.py --preset base          # daily_conversations.txt
+python generate.py --prompt "What should I cook?"
 ```
 
-### 3. Voice AI Specialist
+### 3. Voice AI Specialist (recommended)
 ```bash
-# Generate training script
-python scripts/train_configs.py --generate voice > train_voice.py
-
-# Train model (creates voice_model.pt)
-python train_voice.py
-
-# Use with voice AI
-python voice_ai.py --mode voice
+python train.py --preset nova          # byte-level BPE 4096 + RoPE flagship
+python voice_ai.py --mode voice        # picks up aira_model.pt automatically
 ```
 
----
+### 4. Everything else — the measured ladder
+```bash
+python train.py --preset tiny   # 0.36M, seconds, CPU
+python train.py --preset beast  # 10M,  CPU-able
+python train.py --preset nova   # 91.3M — best quality, GPU tier
+python train.py --preset titan  # 202M — Kaggle GPUs, see docs/KAGGLE_TRAINING.md
+
+python train_configs.py --list   # convenience names + info
+```
+
+Full free-GPU playbook: `[KAGGLE_TRAINING.md](KAGGLE_TRAINING.md)`.
 
 ## 📚 Training Configurations
 

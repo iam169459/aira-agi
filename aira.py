@@ -48,7 +48,7 @@ DIRECT_COMMANDS = {
     "command": ("voice_ai_girl.py", ["--mode", "command"]),
     "voice": ("voice_ai.py", ["--mode", "voice"]),
     "demo": ("demo_girl_persona.py", ["--interactive"]),
-    "test": ("scripts/test_agi_core.py", []),
+    "test": ("tests/test_agi_core.py", []),
 }
 
 
@@ -62,11 +62,12 @@ def run(script, args=()):
 
 def train_menu():
     choices = {
-        "1": ("coding", "Coding model"),
-        "2": ("daily", "Daily conversation model"),
-        "3": ("voice", "Voice model"),
+        "1": ("coding", "Coding model (base size, code corpus)"),
+        "2": ("daily", "Daily conversation model (base size)"),
+        "3": ("voice", "Voice model (nova: BPE + RoPE, GPU recommended)"),
+        "4": ("large", "Large model (nova preset — the standard choice)"),
     }
-    print("\nTrain which model?")
+    print("\nTrain which model? (all grow the ONE model: aira_model.pt)")
     for key, (_, label) in choices.items():
         print(f"  {key}. {label}")
     choice = input("Choice: ").strip()
@@ -74,11 +75,11 @@ def train_menu():
         print("Cancelled.")
         return
     kind, label = choices[choice]
-    print(f"\nGenerating and starting {label.lower()} training...")
+    print(f"\nGenerating and starting {label.lower()}...")
     generated = os.path.join(REPO_ROOT, f"train_{kind}.py")
     with open(generated, "w") as f:
         subprocess.run(
-            [sys.executable, os.path.join(REPO_ROOT, "scripts", "train_configs.py"),
+            [sys.executable, os.path.join(REPO_ROOT, "train_configs.py"),
              "--generate", kind],
             stdout=f, cwd=REPO_ROOT,
         )
@@ -114,11 +115,11 @@ def main():
         elif choice == "7":
             run("demo_girl_persona.py", ["--all"])
         elif choice == "8":
-            run("scripts/train_configs.py", ["--list"])
+            run("train_configs.py", ["--list"])
         elif choice == "9":
             train_menu()
         elif choice == "10":
-            run("scripts/generate.py", ["--checkpoint", "tiny_model.pt"])
+            run("generate.py")
         elif choice == "11":
             run("scripts/setup_neural_voice.py")
         elif choice == "12":

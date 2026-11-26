@@ -1,388 +1,180 @@
-"""
-Training Configuration Presets for Aira AGI
+"""Training Configuration Presets for Aira AGI (modern trainer layer).
 
-This module provides pre-configured training settings for different use cases:
-- Coding Assistant: Optimized for code generation and understanding
-- Daily Conversation: Optimized for general conversation and daily tasks
-- Voice AI: Optimized for voice interaction patterns
-- Balanced: A mix of all capabilities
-"""
+This module maps convenience configuration names onto the one real
+trainer, ``train.py`` (EmotionAwareGPT + byte-level BPE + RoPE + the
+one-model growth loop). It does NOT contain its own model or training
+loop anymore — every generated script calls ``train.train()`` so your
+model is always trained the same way: checkpoints auto-resume, always
+save to the same growing file, and BPE/RoPE choices travel inside the
+checkpoint.
 
+Convenience configs:
+- coding:  code-heavy data    -> base-size model on code_corpus.txt
+- daily:   conversation data  -> base preset (daily_conversations.txt)
+- voice:   big modern model   -> nova preset (BPE 4096 + RoPE)
+- balanced: full corpus       -> beast preset
+- tiny / small / medium / large: the measured param ladder
+"""
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
 class TrainingConfig:
-    """Training configuration for TinyGPT model"""
-    
-    # Dataset configuration
-    data_file: str = "data/data.txt"
-    data_files: List[str] = field(default_factory=list)
-    
-    # Model architecture
+    """Training configuration that resolves to a train.py call."""
+
+    # Trainer wiring (the fields that actually drive training)
+    preset: str = "tiny"
+    data_file: Optional[str] = None          # None = the preset's choice
+    out_file: str = "aira_model.pt"          # ONE growing model
+    steps: Optional[int] = None              # None = preset default
+    tokenizer: Optional[str] = None          # None = preset choice
+    vocab_size: Optional[int] = None
+    rope: Optional[bool] = None
+    fresh: bool = False
+
+    # Model architecture (mirrors the preset; informational)
     block_size: int = 64
     n_embd: int = 96
     n_head: int = 4
     n_layer: int = 3
     dropout: float = 0.1
-    
-    # Training parameters
+
+    # Training parameters (informational)
     batch_size: int = 8
     max_steps: int = 500
     learning_rate: float = 3e-4
     eval_every: int = 100
-    
-    # Checkpoint configuration
-    checkpoint_file: str = "tiny_model.pt"
-    save_every: int = 100
-    
+
     # Device configuration
-    device: str = "auto"  # "auto", "cpu", "cuda", "mps"
-    
+    device: str = "auto"   # "auto", "cpu", "cuda", "mps"
+
     # Description
     name: str = "Default"
     description: str = "Default training configuration"
-    
+
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
         return {
-            'data_file': self.data_file,
-            'data_files': self.data_files,
-            'block_size': self.block_size,
-            'n_embd': self.n_embd,
-            'n_head': self.n_head,
-            'n_layer': self.n_layer,
-            'dropout': self.dropout,
-            'batch_size': self.batch_size,
-            'max_steps': self.max_steps,
-            'learning_rate': self.learning_rate,
-            'eval_every': self.eval_every,
-            'checkpoint_file': self.checkpoint_file,
-            'save_every': self.save_every,
-            'device': self.device,
-            'name': self.name,
-            'description': self.description
+            'preset': self.preset, 'data_file': self.data_file,
+            'out_file': self.out_file, 'steps': self.steps,
+            'tokenizer': self.tokenizer, 'vocab_size': self.vocab_size,
+            'rope': self.rope, 'fresh': self.fresh,
+            'block_size': self.block_size, 'n_embd': self.n_embd,
+            'n_head': self.n_head, 'n_layer': self.n_layer,
+            'dropout': self.dropout, 'batch_size': self.batch_size,
+            'max_steps': self.max_steps, 'learning_rate': self.learning_rate,
+            'eval_every': self.eval_every, 'device': self.device,
+            'name': self.name, 'description': self.description,
         }
-    
+
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'TrainingConfig':
-        """Create from dictionary"""
-        return cls(**{k: v for k, v in config_dict.items() if k in cls.__dataclass_fields__})
-    
+        return cls(**{k: v for k, v in config_dict.items()
+                      if k in cls.__dataclass_fields__})
+
+    def train_kwargs(self) -> Dict[str, Any]:
+        """Keyword args for train.train() (None values are omitted so the
+        preset's own choice wins)."""
+        kw = {}
+        if self.data_file:
+            kw["data_file"] = self.data_file
+        if self.steps:
+            kw["steps"] = self.steps
+        for opt in ("tokenizer", "vocab_size", "rope"):
+            value = getattr(self, opt)
+            if value is not None:
+                kw[opt] = value
+        if self.fresh:
+            kw["fresh"] = True
+        return kw
+
     def get_device(self) -> str:
-        """Get the actual device to use"""
+        """The device train.py would use right now."""
         import torch
-        
         if self.device == "auto":
             if torch.cuda.is_available():
                 return "cuda"
-            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            if hasattr(torch.backends, 'mps') and \
+                    torch.backends.mps.is_available():
                 return "mps"
-            else:
-                return "cpu"
+            return "cpu"
         return self.device
 
 
 # ============================================================================
-# PRESET CONFIGURATIONS
+# PRESET CONFIGURATIONS  (map onto train.py's measured ladder)
 # ============================================================================
 
-def get_coding_config() -> TrainingConfig:
-    """
-    Coding Assistant Configuration
-    
-    Optimized for:
-    - Code generation (Python, JavaScript, etc.)
-    - Code understanding and explanation
-    - Technical documentation
-    - Algorithm explanations
-    
-    Characteristics:
-    - Larger context window for code blocks
-    - More layers for complex patterns
-    - Higher embedding dimension for technical vocabulary
-    """
-    return TrainingConfig(
-        name="Coding Assistant",
-        description="Optimized for code generation and technical understanding",
-        data_file="data/code_corpus.txt",
-        data_files=["data/code_corpus.txt", "data/combined_training_data.txt"],
-        
-        # Model architecture - larger for code
-        block_size=256,
-        n_embd=384,
-        n_head=6,
-        n_layer=6,
-        dropout=0.1,
-        
-        # Training parameters - more steps for technical data
-        batch_size=4,
-        max_steps=2000,
-        learning_rate=3e-4,
-        eval_every=200,
-        
-        checkpoint_file="coding_model.pt",
-        save_every=200
+def _from_preset(preset_name: str, name: str, description: str,
+                 root: str = None, **overrides) -> TrainingConfig:
+    """Build a config whose architecture/training fields mirror a
+    train.py preset (kept in sync for --info printing)."""
+    try:
+        from train import PRESETS
+        cfg = PRESETS[preset_name]
+    except Exception:                                   # pragma: no cover
+        cfg = {}
+    params = dict(
+        preset=preset_name, name=name, description=description,
+        block_size=cfg.get("block_size", 64),
+        n_embd=cfg.get("n_embd", 96), n_head=cfg.get("n_head", 4),
+        n_layer=cfg.get("n_layer", 3),
+        batch_size=cfg.get("batch_size", 8),
+        max_steps=cfg.get("max_steps", 500),
+        learning_rate=cfg.get("lr", 3e-4),
+        eval_every=cfg.get("eval_every", 100),
+        tokenizer=cfg.get("tokenizer"), vocab_size=cfg.get("vocab_size"),
+        rope=cfg.get("rope"),
     )
+    params.update(overrides)
+    return TrainingConfig(**params)
+
+
+def get_coding_config() -> TrainingConfig:
+    return _from_preset(
+        "base", "Coding",
+        "base-size model on the code corpus (override the preset's data)",
+        data_file="code_corpus.txt")
 
 
 def get_daily_config() -> TrainingConfig:
-    """
-    Daily Conversation Configuration
-    
-    Optimized for:
-    - General conversation
-    - Daily tasks and assistance
-    - Personal questions and answers
-    - Everyday knowledge
-    
-    Characteristics:
-    - Moderate context window
-    - Balanced model size
-    - Good for diverse conversational patterns
-    """
-    return TrainingConfig(
-        name="Daily Conversation",
-        description="Optimized for general conversation and daily assistance",
-        data_file="data/daily_conversations.txt",
-        data_files=["data/daily_conversations.txt", "data/combined_training_data.txt"],
-        
-        # Model architecture
-        block_size=128,
-        n_embd=256,
-        n_head=4,
-        n_layer=4,
-        dropout=0.1,
-        
-        # Training parameters
-        batch_size=8,
-        max_steps=1500,
-        learning_rate=3e-4,
-        eval_every=150,
-        
-        checkpoint_file="daily_model.pt",
-        save_every=150
-    )
+    return _from_preset(
+        "base", "Daily Conversation",
+        "base-size model on the conversation corpus")
 
 
 def get_voice_config() -> TrainingConfig:
-    """
-    Voice AI Configuration
-    
-    Optimized for:
-    - Voice command patterns
-    - Short, direct responses
-    - Conversational flow
-    - Voice-specific patterns
-    
-    Characteristics:
-    - Smaller context window (voice commands are short)
-    - Faster training
-    - Optimized for quick responses
-    """
-    return TrainingConfig(
-        name="Voice AI",
-        description="Optimized for voice interaction patterns",
-        data_file="data/combined_training_data.txt",
-        data_files=["data/combined_training_data.txt"],
-        
-        # Model architecture - smaller and faster
-        block_size=64,
-        n_embd=128,
-        n_head=4,
-        n_layer=3,
-        dropout=0.1,
-        
-        # Training parameters
-        batch_size=16,
-        max_steps=1000,
-        learning_rate=5e-4,
-        eval_every=100,
-        
-        checkpoint_file="voice_model.pt",
-        save_every=100
-    )
+    return _from_preset(
+        "nova", "Voice",
+        "modern flagship (byte-level BPE 4096 + RoPE) — best quality for "
+        "voice conversations; needs a GPU for long runs")
 
 
 def get_balanced_config() -> TrainingConfig:
-    """
-    Balanced Configuration
-    
-    Optimized for:
-    - Mix of coding, conversation, and voice
-    - General-purpose AI assistant
-    - Good performance across all tasks
-    
-    Characteristics:
-    - Medium context window
-    - Balanced model size
-    - Good for diverse tasks
-    """
-    return TrainingConfig(
-        name="Balanced",
-        description="Balanced configuration for general-purpose AI",
-        data_file="data/combined_training_data.txt",
-        
-        # Model architecture
-        block_size=128,
-        n_embd=256,
-        n_head=4,
-        n_layer=4,
-        dropout=0.1,
-        
-        # Training parameters
-        batch_size=8,
-        max_steps=2000,
-        learning_rate=3e-4,
-        eval_every=200,
-        
-        checkpoint_file="balanced_model.pt",
-        save_every=200
-    )
+    return _from_preset(
+        "beast", "Balanced",
+        "10M model on the combined beast corpus (CPU-able)")
 
 
 def get_tiny_config() -> TrainingConfig:
-    """
-    Tiny Configuration (Minimal Resources)
-    
-    Optimized for:
-    - Low-resource environments
-    - Quick testing
-    - CPU-only training
-    
-    Characteristics:
-    - Very small model
-    - Fast training
-    - Limited capabilities
-    """
-    return TrainingConfig(
-        name="Tiny",
-        description="Minimal configuration for low-resource environments",
-        data_file="data/data.txt",
-        data_files=["data/data.txt"],
-        
-        # Model architecture - minimal
-        block_size=64,
-        n_embd=64,
-        n_head=2,
-        n_layer=2,
-        dropout=0.1,
-        
-        # Training parameters
-        batch_size=4,
-        max_steps=500,
-        learning_rate=3e-4,
-        eval_every=100,
-        
-        checkpoint_file="tiny_model.pt",
-        save_every=100
-    )
+    return _from_preset("tiny", "Tiny", "0.36M starter — trains in seconds")
 
 
 def get_small_config() -> TrainingConfig:
-    """
-    Small Configuration
-    
-    Optimized for:
-    - Moderate resource environments
-    - Quick training on CPU
-    - Basic capabilities
-    """
-    return TrainingConfig(
-        name="Small",
-        description="Small configuration for moderate resources",
-        data_file="data/combined_training_data.txt",
-        data_files=["data/combined_training_data.txt"],
-        
-        # Model architecture
-        block_size=128,
-        n_embd=128,
-        n_head=4,
-        n_layer=3,
-        dropout=0.1,
-        
-        # Training parameters
-        batch_size=8,
-        max_steps=1000,
-        learning_rate=3e-4,
-        eval_every=100,
-        
-        checkpoint_file="small_model.pt",
-        save_every=100
-    )
+    return _from_preset("base", "Small", "2.3M — CPU fine")
 
 
 def get_medium_config() -> TrainingConfig:
-    """
-    Medium Configuration
-    
-    Optimized for:
-    - Good balance of performance and resource usage
-    - GPU recommended but can run on CPU
-    - Good for most use cases
-    """
-    return TrainingConfig(
-        name="Medium",
-        description="Medium configuration for good performance",
-        data_file="data/combined_training_data.txt",
-        
-        # Model architecture
-        block_size=256,
-        n_embd=384,
-        n_head=6,
-        n_layer=6,
-        dropout=0.1,
-        
-        # Training parameters
-        batch_size=4,
-        max_steps=3000,
-        learning_rate=3e-4,
-        eval_every=200,
-        
-        checkpoint_file="medium_model.pt",
-        save_every=200
-    )
+    return _from_preset(
+        "beast", "Medium", "10M — her full-size CPU brain")
 
 
 def get_large_config() -> TrainingConfig:
-    """
-    Large Configuration
-    
-    Optimized for:
-    - Maximum performance
-    - GPU required
-    - Large resource environments
-    - Best for complex tasks
-    """
-    return TrainingConfig(
-        name="Large",
-        description="Large configuration for maximum performance",
-        data_file="data/combined_training_data.txt",
-        
-        # Model architecture - large
-        block_size=512,
-        n_embd=768,
-        n_head=12,
-        n_layer=12,
-        dropout=0.1,
-        
-        # Training parameters
-        batch_size=2,
-        max_steps=5000,
-        learning_rate=3e-4,
-        eval_every=500,
-        
-        checkpoint_file="large_model.pt",
-        save_every=500
-    )
+    return _from_preset(
+        "nova", "Large", "91.3M — BPE 4096 + RoPE flagship, GPU tier")
 
-
-# ============================================================================
-# CONFIGURATION REGISTRY
-# ============================================================================
 
 CONFIG_REGISTRY = {
     "coding": get_coding_config,
@@ -393,44 +185,46 @@ CONFIG_REGISTRY = {
     "small": get_small_config,
     "medium": get_medium_config,
     "large": get_large_config,
-    "default": get_balanced_config,
 }
 
 
 def get_config(config_name: str) -> TrainingConfig:
+    """Get a training configuration by name.
+
+    TrainingConfig objects can also be created from train.py preset names
+    directly: get_config("xl") falls through to the ladder.
     """
-    Get a training configuration by name
-    
-    Args:
-        config_name: Name of the configuration
-        
-    Returns:
-        TrainingConfig object
-        
-    Raises:
-        ValueError: If configuration not found
-    """
-    if config_name not in CONFIG_REGISTRY:
-        available = ", ".join(CONFIG_REGISTRY.keys())
-        raise ValueError(f"Unknown configuration: {config_name}. Available: {available}")
-    
-    return CONFIG_REGISTRY[config_name]()
+    if config_name in CONFIG_REGISTRY:
+        return CONFIG_REGISTRY[config_name]()
+    try:
+        from train import PRESETS
+        if config_name in PRESETS:
+            return _from_preset(
+                config_name, config_name.title(),
+                f"train.py preset '{config_name}'")
+    except ImportError:
+        pass
+    available = ", ".join(sorted(set(CONFIG_REGISTRY) |
+                                 {"presets of train.py"}))
+    raise ValueError(f"Unknown configuration: {config_name}. "
+                     f"Available: {available}")
 
 
 def list_configs() -> List[str]:
-    """List all available configurations"""
-    return list(CONFIG_REGISTRY.keys())
+    """List all available configuration names."""
+    return list(CONFIG_REGISTRY)
 
 
 def print_config_info(config_name: str = None):
-    """Print information about configurations"""
+    """Print information about configurations."""
     if config_name:
         config = get_config(config_name)
         print(f"\n{'=' * 70}")
         print(f"  Configuration: {config.name}")
         print(f"{'=' * 70}")
         print(f"  Description: {config.description}")
-        print(f"\n  Model Architecture:")
+        print(f"\n  Model Architecture (mirrors train.py preset "
+              f"'{config.preset}'):")
         print(f"    Block Size: {config.block_size}")
         print(f"    Embedding Dim: {config.n_embd}")
         print(f"    Heads: {config.n_head}")
@@ -441,8 +235,10 @@ def print_config_info(config_name: str = None):
         print(f"    Max Steps: {config.max_steps}")
         print(f"    Learning Rate: {config.learning_rate}")
         print(f"    Eval Every: {config.eval_every}")
-        print(f"\n  Data Files: {config.data_files or [config.data_file]}")
-        print(f"  Checkpoint: {config.checkpoint_file}")
+        print(f"\n  Tokenizer: {config.tokenizer or 'char (preset default)'}"
+              + (f", vocab {config.vocab_size}" if config.vocab_size else ""))
+        print(f"  RoPE: {'on' if config.rope else 'off (or preset default)'}")
+        print(f"  Checkpoint: {config.out_file} (ONE growing model)")
         print(f"{'=' * 70}\n")
     else:
         print(f"\n{'=' * 70}")
@@ -450,274 +246,58 @@ def print_config_info(config_name: str = None):
         print(f"{'=' * 70}")
         for name in list_configs():
             config = get_config(name)
-            print(f"\n  [36m{name}[0m")
+            print(f"\n  {name}")
             print(f"    {config.description}")
-            print(f"    Model: {config.n_embd} dim, {config.n_head} heads, {config.n_layer} layers")
-            print(f"    Training: {config.batch_size} batch, {config.max_steps} steps")
+            print(f"    Model: {config.n_embd} dim, {config.n_head} heads, "
+                  f"{config.n_layer} layers")
+            print(f"    Training: {config.batch_size} batch, "
+                  f"{config.max_steps} steps")
         print(f"\n{'=' * 70}\n")
 
 
 # ============================================================================
-# TRAINING SCRIPT GENERATOR
+# TRAINING SCRIPT GENERATOR  (always goes through the modern trainer)
 # ============================================================================
 
 def generate_training_script(config: TrainingConfig) -> str:
+    """Generate a runnable training script for the given configuration.
+
+    The script imports the real trainer (train.train) so generated runs
+    behave exactly like ``python train.py``: auto-resume one-model growth,
+    CUDA/AMP/DataParallel detection, BPE + RoPE, periodic checkpoints.
     """
-    Generate a training script for the given configuration
-    
-    Args:
-        config: Training configuration
-        
-    Returns:
-        Python training script as string
-    """
-    
-    # Combine all data files
-    if config.data_files:
-        data_files_code = f"[{', '.join(f'\"{f}\"' for f in config.data_files)}]"
-    else:
-        data_files_code = f"[\"{config.data_file}\"]"
-    
-    script = f"""import math
-import os
-import torch
-import torch.nn as nn
-from torch.nn import functional as F
+    kw = config.train_kwargs()
+    kw_lines = ""
+    for key, value in kw.items():
+        kw_lines += f"    {key}={value!r},\n"
+    return f'''"""Auto-generated trainer ({config.name}).
 
-torch.manual_seed(42)
-
-# Configuration from {config.name}
-DATA_FILES = {data_files_code}
-CHECKPOINT = "{config.checkpoint_file}"
-
-BLOCK_SIZE = {config.block_size}
-BATCH_SIZE = {config.batch_size}
-MAX_STEPS = {config.max_steps}
-EVAL_EVERY = {config.eval_every}
-LEARNING_RATE = {config.learning_rate}
-
-N_EMBD = {config.n_embd}
-N_HEAD = {config.n_head}
-N_LAYER = {config.n_layer}
-DROPOUT = {config.dropout}
-
-# Combine all data files
-text = ""
-for data_file in DATA_FILES:
-    if os.path.exists(data_file):
-        with open(data_file, encoding="utf-8") as f:
-            text += f.read() + "\\n\\n"
-    else:
-        print(f"Warning: Data file not found: {{data_file}}")
-
-if len(text) < 2 * BLOCK_SIZE + 20:
-    raise ValueError(
-        f"Combined data needs at least {{2 * BLOCK_SIZE + 20}} characters "
-        "for this configuration. Add more text."
-    )
-
-chars = sorted(set(text))
-stoi = {{ch: i for i, ch in enumerate(chars)}}
-itos = {{i: ch for ch, i in stoi.items()}}
-encoded = torch.tensor([stoi[c] for c in text], dtype=torch.long)
-
-split = int(len(encoded) * 0.9)
-train_data, val_data = encoded[:split], encoded[split:]
-if len(train_data) <= BLOCK_SIZE or len(val_data) <= BLOCK_SIZE:
-    raise ValueError("Add more text so both splits exceed BLOCK_SIZE.")
-
-device = "{config.get_device()}" if "{config.get_device()}" != "auto" else "mps" if torch.backends.mps.is_available() else "cpu"
-print("Device:", device)
-print("Vocabulary size:", len(chars))
-print("Characters:", len(text))
-print("Data files:", DATA_FILES)
-
-
-def get_batch(source):
-    starts = torch.randint(len(source) - BLOCK_SIZE, (BATCH_SIZE,))
-    x = torch.stack([source[i:i + BLOCK_SIZE] for i in starts])
-    y = torch.stack([source[i + 1:i + BLOCK_SIZE + 1] for i in starts])
-    return x.to(device), y.to(device)
-
-
-class AttentionHead(nn.Module):
-    def __init__(self, head_size):
-        super().__init__()
-        self.key = nn.Linear(N_EMBD, head_size, bias=False)
-        self.query = nn.Linear(N_EMBD, head_size, bias=False)
-        self.value = nn.Linear(N_EMBD, head_size, bias=False)
-        self.register_buffer(
-            "mask", torch.tril(torch.ones(BLOCK_SIZE, BLOCK_SIZE))
-        )
-
-    def forward(self, x):
-        _, t, _ = x.shape
-        k, q, v = self.key(x), self.query(x), self.value(x)
-        scores = q @ k.transpose(-2, -1) / math.sqrt(k.size(-1))
-        scores = scores.masked_fill(
-            self.mask[:t, :t] == 0, float("-inf")
-        )
-        weights = F.softmax(scores, dim=-1)
-        return weights @ v
-
-
-class MultiHeadAttention(nn.Module):
-    def __init__(self):
-        super().__init__()
-        head_size = N_EMBD // N_HEAD
-        self.heads = nn.ModuleList(
-            [AttentionHead(head_size) for _ in range(N_HEAD)]
-        )
-        self.proj = nn.Linear(N_EMBD, N_EMBD)
-        self.dropout = nn.Dropout(DROPOUT)
-
-    def forward(self, x):
-        x = torch.cat([head(x) for head in self.heads], dim=-1)
-        return self.dropout(self.proj(x))
-
-
-class TransformerBlock(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.ln1 = nn.LayerNorm(N_EMBD)
-        self.ln2 = nn.LayerNorm(N_EMBD)
-        self.attn = MultiHeadAttention()
-        self.ff = nn.Sequential(
-            nn.Linear(N_EMBD, 4 * N_EMBD),
-            nn.GELU(),
-            nn.Linear(4 * N_EMBD, N_EMBD),
-            nn.Dropout(DROPOUT),
-        )
-
-    def forward(self, x):
-        x = x + self.attn(self.ln1(x))
-        return x + self.ff(self.ln2(x))
-
-
-class TinyGPT(nn.Module):
-    def __init__(self, vocab_size):
-        super().__init__()
-        self.token_emb = nn.Embedding(vocab_size, N_EMBD)
-        self.pos_emb = nn.Embedding(BLOCK_SIZE, N_EMBD)
-        self.blocks = nn.Sequential(
-            *[TransformerBlock() for _ in range(N_LAYER)]
-        )
-        self.ln = nn.LayerNorm(N_EMBD)
-        self.head = nn.Linear(N_EMBD, vocab_size)
-
-    def forward(self, idx, targets=None):
-        _, t = idx.shape
-        positions = torch.arange(t, device=idx.device)
-        x = self.token_emb(idx) + self.pos_emb(positions)
-        logits = self.head(self.ln(self.blocks(x)))
-        loss = None
-        if targets is not None:
-            loss = F.cross_entropy(
-                logits.reshape(-1, logits.size(-1)),
-                targets.reshape(-1),
-            )
-        return logits, loss
-
-    @torch.no_grad()
-    def generate(self, idx, max_new_tokens=300, temperature=0.8):
-        self.eval()
-        temperature = max(float(temperature), 1e-5)
-        for _ in range(max_new_tokens):
-            idx_cond = idx[:, -BLOCK_SIZE:]
-            logits, _ = self(idx_cond)
-            probs = F.softmax(logits[:, -1, :] / temperature, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1)
-            idx = torch.cat((idx, next_token), dim=1)
-        return idx
-
-
-model = TinyGPT(len(chars)).to(device)
-print(f"Parameters: {{sum(p.numel() for p in model.parameters()):,}}")
-optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-
-
-@torch.no_grad()
-def estimate_loss():
-    model.eval()
-    results = {{}}
-    for name, source in (("train", train_data), ("val", val_data)):
-        losses = []
-        for _ in range(5):
-            x, y = get_batch(source)
-            _, loss = model(x, y)
-            losses.append(loss.item())
-        results[name] = round(sum(losses) / len(losses), 4)
-    model.train()
-    return results
-
-
-model.train()
-for step in range(MAX_STEPS):
-    if step % EVAL_EVERY == 0:
-        print(f"step {{step}}: {{estimate_loss()}}")
-    x, y = get_batch(train_data)
-    _, loss = model(x, y)
-    optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-    optimizer.step()
-    
-    # Save checkpoint periodically
-    if step % {config.save_every} == 0 and step > 0:
-        torch.save(
-            {{
-                "model": model.cpu().state_dict(),
-                "chars": chars,
-                "config": {{
-                    "block_size": BLOCK_SIZE,
-                    "n_embd": N_EMBD,
-                    "n_head": N_HEAD,
-                    "n_layer": N_LAYER,
-                    "dropout": DROPOUT,
-                }},
-            }},
-            CHECKPOINT,
-        )
-        print(f"Checkpoint saved to {{CHECKPOINT}}")
-        model.to(device)
-
-print("Final loss:", estimate_loss())
-torch.save(
-    {{
-        "model": model.cpu().state_dict(),
-        "chars": chars,
-        "config": {{
-            "block_size": BLOCK_SIZE,
-            "n_embd": N_EMBD,
-            "n_head": N_HEAD,
-            "n_layer": N_LAYER,
-            "dropout": DROPOUT,
-        }},
-    }},
-    CHECKPOINT,
-)
-print(f"Saved checkpoint to {{CHECKPOINT}}")
+Generated by train_configs.py. Runs the REAL trainer (train.py) so the
+run behaves identically to `python train.py --preset {config.preset}`:
+auto-resume, periodic saves, CUDA/AMP/DataParallel, BPE + RoPE.
 """
-    
-    return script
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from train import train
+
+if __name__ == "__main__":
+    train(
+        preset="{config.preset}",
+        out_path="{config.out_file}",
+{kw_lines}    )
+'''
 
 
 def save_training_script(config: TrainingConfig, filename: str = None):
-    """
-    Save training script to file
-    
-    Args:
-        config: Training configuration
-        filename: Output filename (default: train_{config_name}.py)
-    """
+    """Save the generated training script to a file."""
     if filename is None:
-        filename = f"train_{config.name.lower().replace(' ', '_')}.py"
-    
-    script = generate_training_script(config)
-    
-    with open(filename, 'w') as f:
-        f.write(script)
-    
+        safe = config.name.lower().replace(" ", "_")
+        filename = f"train_{safe}.py"
+    with open(filename, "w", encoding="utf-8") as fh:
+        fh.write(generate_training_script(config))
     print(f"Training script saved to {filename}")
     return filename
 
@@ -728,24 +308,27 @@ def save_training_script(config: TrainingConfig, filename: str = None):
 
 if __name__ == "__main__":
     import argparse
-    
-    parser = argparse.ArgumentParser(description="Training Configuration Manager")
-    parser.add_argument("--list", action="store_true", help="List all available configurations")
-    parser.add_argument("--info", type=str, help="Show info about a specific configuration")
-    parser.add_argument("--generate", type=str, help="Generate training script for a configuration")
-    parser.add_argument("--save", type=str, help="Save training script for a configuration")
-    
+
+    parser = argparse.ArgumentParser(
+        description="Training Configuration Manager (modern-trainer layer)")
+    parser.add_argument("--list", action="store_true",
+                        help="List all available configurations")
+    parser.add_argument("--info", type=str,
+                        help="Show info about a specific configuration")
+    parser.add_argument("--generate", type=str,
+                        help="Generate a training script for a configuration")
+    parser.add_argument("--save", type=str,
+                        help="Save a training script for a configuration")
+
     args = parser.parse_args()
-    
+
     if args.list:
         print_config_info()
     elif args.info:
         print_config_info(args.info)
     elif args.generate:
         config = get_config(args.generate)
-        script = generate_training_script(config)
-        print(f"\nGenerated training script for {config.name}:\n", file=sys.stderr)
-        print(script)
+        print(generate_training_script(config))
     elif args.save:
         config = get_config(args.save)
         save_training_script(config)
