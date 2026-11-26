@@ -66,6 +66,17 @@ PRESETS = {
 DROPOUT = 0.1
 
 
+def _dp_scalar(loss):
+    """DataParallel gathers each replica's SCALAR loss into a 1-D
+    vector (2 entries on 2 GPUs) - backward() then refuses a non-scalar
+    ("grad can be implicitly created only for scalar outputs").
+    Replicas split the batch evenly, so averaging the per-replica means
+    returns the full-batch mean. Scalars and None pass through."""
+    if loss is not None and loss.dim() != 0:
+        loss = loss.mean()
+    return loss
+
+
 def build_corpus(root=ROOT):
     """Concatenate conversations, code, and general data into the
     beast training corpus (data/beast_corpus.txt)."""
@@ -317,7 +328,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
             for _ in range(5):
                 x, y = get_batch(source)
                 _, loss = model(x, targets=y)
-                losses.append(loss.item())
+                losses.append(_dp_scalar(loss).item())
             results[name] = round(sum(losses) / len(losses), 4)
         model.train()
         return results
@@ -348,7 +359,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     for micro in range(steps * GRAD_ACCUM):
         x, y = get_batch(train_data)
         _, loss = model(x, targets=y)
-        loss = loss / GRAD_ACCUM
+        loss = _dp_scalar(loss) / GRAD_ACCUM
         if scaler is not None:
             scaler.scale(loss).backward()
         else:
