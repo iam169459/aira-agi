@@ -54,18 +54,17 @@ python voice_ai.py --mode voice
 ### 3. Train Your Model
 
 ```bash
-# Train for coding
-python train_configs.py --generate coding > train_coding.py
-python train_coding.py
+Aira has ONE growing model: `aira_model.pt` — every train command
+resumes and grows the same file.
 
-# Train for daily conversation
-python train_configs.py --generate daily > train_daily.py
-python train_daily.py
+```bash
+# Best quality (nova: byte-level BPE 4096 + RoPE) — GPU tier:
+python train.py --preset nova
 
-# Train for voice AI
-python train_configs.py --generate voice > train_voice.py
-python train_voice.py
-```
+# CPU-able sizes:
+python train.py --preset base --data code_corpus.txt   # coding-heavy
+python train.py --preset base                          # daily conversation
+``````
 
 ---
 
@@ -208,31 +207,25 @@ The project includes several training datasets:
 
 ### Configuration Presets
 
-The `train_configs.py` module provides pre-configured training settings:
+`train_configs.py` maps convenience names onto the REAL trainer
+(`train.py` — measured preset ladder, byte-level BPE, RoPE, one-model
+growth). Run `python train_configs.py --list` for details:
 
-| Config | Use Case | Model Size | Training Steps | Best For |
-|--------|----------|------------|----------------|----------|
-| `tiny` | Testing | 64 dim, 2 heads, 2 layers | 500 | Quick testing, CPU-only |
-| `small` | Basic | 128 dim, 4 heads, 3 layers | 1000 | Moderate resources |
-| `medium` | Balanced | 384 dim, 6 heads, 6 layers | 3000 | Good performance |
-| `large` | Maximum | 768 dim, 12 heads, 12 layers | 5000 | Best performance, GPU required |
-| `coding` | Coding | 384 dim, 6 heads, 6 layers | 2000 | Code generation |
-| `daily` | Conversation | 256 dim, 4 heads, 4 layers | 1500 | Daily conversation |
-| `voice` | Voice AI | 128 dim, 4 heads, 3 layers | 1000 | Voice commands |
-| `balanced` | General | 256 dim, 4 heads, 4 layers | 2000 | All-purpose |
-
+| Config | Uses preset | Best for |
+|--------|-------------|----------|
+| `tiny` | `tiny` (0.36M) | quick tests, any machine |
+| `small` / `daily` | `base` (2.3M) | CPU training |
+| `medium` / `balanced` | `beast` (10M) | full CPU brain, all-round |
+| `large` / `voice` | `nova` (91.3M, BPE 4096 + RoPE) | best quality, GPU |
+| `coding` | `base` on `code_corpus.txt` | code-heavy training |
+| any preset name (`xl`, `xxl`, `titan`...) | same-named preset | exact ladder tiers |
 ### Training for Coding
 
 To train a model optimized for coding assistance:
 
 ```bash
-# Generate training script
-python train_configs.py --generate coding > train_coding.py
-
-# Run training
-python train_coding.py
-
-# The model will be saved as coding_model.pt
+python train.py --preset base --data code_corpus.txt
+# Grows the ONE model: aira_model.pt (auto-resumes on re-run)
 ```
 
 **What it learns:**
@@ -255,13 +248,8 @@ python train_coding.py
 To train a model optimized for daily conversation:
 
 ```bash
-# Generate training script
-python train_configs.py --generate daily > train_daily.py
-
-# Run training
-python train_daily.py
-
-# The model will be saved as daily_model.pt
+python train.py --preset base          # daily_conversations.txt
+# Grows the ONE model: aira_model.pt
 ```
 
 **What it learns:**
@@ -269,29 +257,20 @@ python train_daily.py
 - Daily life questions and answers
 - Personal assistance
 - Everyday knowledge
-- Natural language understanding
 
-**Configuration details:**
-- Block size: 128
-- Embedding dimension: 256
-- Attention heads: 4
-- Layers: 4
-- Training steps: 1500
-- Batch size: 8
-
+**Command:** `python train.py --preset base`
+(128 block, 192 dim, 6 heads, 5 layers, 1500 steps — see
+`python train_configs.py --info daily`).
 ### Training for Voice AI
 
 To train a model optimized for voice interactions:
 
 ```bash
-# Generate training script
-python train_configs.py --generate voice > train_voice.py
-
-# Run training
-python train_voice.py
-
-# The model will be saved as voice_model.pt
+python train.py --preset nova     # BPE 4096 + RoPE — needs a GPU for long runs
+# Grows the ONE model: aira_model.pt
 ```
+The voice scripts (`voice_ai.py`, `voice_ai_girl.py`) pick up
+`aira_model.pt` automatically.
 
 **What it learns:**
 - Voice command patterns
@@ -312,61 +291,36 @@ python train_voice.py
 To create a custom training configuration:
 
 ```python
-from train_configs import TrainingConfig
+from train_configs import TrainingConfig, save_training_script
 
-# Create custom configuration
+# A custom config wraps the ONE real trainer — pick a preset, override
+# only what you need:
 config = TrainingConfig(
     name="My Custom Model",
-    description="Custom model for my specific needs",
-    data_files=["data/code_corpus.txt", "data/daily_conversations.txt"],
-    
-    # Model architecture
-    block_size=128,
-    n_embd=256,
-    n_head=4,
-    n_layer=4,
-    dropout=0.1,
-    
-    # Training parameters
-    batch_size=8,
-    max_steps=2000,
-    learning_rate=3e-4,
-    eval_every=200,
-    
-    checkpoint_file="my_model.pt"
+    description="BPE + RoPE model for my needs",
+    preset="x1",                 # base architecture from the ladder
+    data_file="code_corpus.txt", # None = preset's default data
+    out_file="aira_model.pt",    # keep the ONE growing model
+    steps=2000,
 )
-
-# Save training script
-from train_configs import save_training_script
+# Save + run a script that calls the real trainer:
 save_training_script(config, "train_my_model.py")
+```
+Or skip the generator entirely — the direct command is equivalent:
 
-# Run training
-# python train_my_model.py
+```bash
+python train.py --preset base --data code_corpus.txt --tokenizer bpe \
+    --vocab-size 4096 --rope
 ```
 
 Or use the command line:
 
 ```bash
 # Create a custom config file
-cat > custom_config.py << 'EOF'
-from train_configs import TrainingConfig
-
-config = TrainingConfig(
-    name="My Model",
-    data_files=["data/code_corpus.txt", "data/daily_conversations.txt"],
-    block_size=128,
-    n_embd=256,
-    n_head=4,
-    n_layer=4,
-    batch_size=8,
-    max_steps=2000,
-    checkpoint_file="my_model.pt"
-)
-EOF
-
-# Generate and run
-python -c "from custom_config import config; from train_configs import save_training_script; save_training_script(config)"
-python train_my_model.py
+```bash
+# The direct command is the same thing, one line:
+python train.py --preset base --data code_corpus.txt --tokenizer bpe \
+    --vocab-size 4096 --rope
 ```
 
 ---
@@ -531,32 +485,26 @@ python train_coding.py 2>&1 | tee train_debug.log
 
 ## Advanced Usage
 
-### Combining Multiple Models
+### Loading Different Checkpoints
 
-You can train multiple models for different purposes and switch between them:
+Aira's main model is the ONE `aira_model.pt` (auto-preferred). For
+experiments you can branch a second checkpoint and point any script at it:
 
-```python
-# In generate.py, you can load different checkpoints
-python generate.py --checkpoint coding_model.pt --prompt "Write a Python function to sort a list"
-python generate.py --checkpoint daily_model.pt --prompt "What should I cook for dinner?"
+```bash
+python generate.py --checkpoint /path/to/experiment.pt --prompt "Write a Python function to sort a list"
 ```
 
 ### Transfer Learning
 
 Fine-tune a pre-trained model on your specific data:
 
-```python
-# Start with a pre-trained model
-import torch
-from train import TinyGPT
+Aira's trainer already does this natively — the "one model" loop:
 
-# Load pre-trained model
-checkpoint = torch.load('balanced_model.pt')
-model = TinyGPT(len(checkpoint['chars']))
-model.load_state_dict(checkpoint['model'])
-
-# Continue training on new data
-# ... (modify training loop to start from loaded model)
+```bash
+# Drop new text into data/, rebuild the corpus, re-run the SAME preset.
+# She resumes weights + optimizer + step counter and keeps growing:
+python -c "import train; train.build_corpus()"
+python train.py --preset nova
 ```
 
 ### Multi-GPU Training
@@ -660,12 +608,11 @@ if 'turn on lights' in command_lower:
 ### Workflow 1: Coding Assistant
 
 ```bash
-# Train the coding model
-python train_configs.py --generate coding > train_coding.py
-python train_coding.py
+# Train the coding model (grows aira_model.pt)
+python train.py --preset base --data code_corpus.txt
 
-# Use the coding model for generation
-python generate.py --checkpoint coding_model.pt --prompt "Write a Python function to calculate Fibonacci numbers"
+# Generate
+python generate.py --prompt "Write a Python function to calculate Fibonacci numbers"
 
 # Use with Voice AI
 python voice_ai.py --mode voice
@@ -675,9 +622,8 @@ python voice_ai.py --mode voice
 ### Workflow 2: Personal Assistant
 
 ```bash
-# Train the daily conversation model
-python train_configs.py --generate daily > train_daily.py
-python train_daily.py
+# Train the daily conversation model (grows aira_model.pt)
+python train.py --preset base
 
 # Use with Voice AI
 python voice_ai.py --mode voice
@@ -687,9 +633,8 @@ python voice_ai.py --mode voice
 ### Workflow 3: Voice Control System
 
 ```bash
-# Train the voice model
-python train_configs.py --generate voice > train_voice.py
-python train_voice.py
+# Train the voice model (nova: BPE 4096 + RoPE — the standard choice)
+python train.py --preset nova
 
 # Use voice command mode
 python voice_ai.py --mode command
@@ -699,9 +644,8 @@ python voice_ai.py --mode command
 ### Workflow 4: Multi-Purpose AI
 
 ```bash
-# Train the balanced model
-python train_configs.py --generate balanced > train_balanced.py
-python train_balanced.py
+# Train the balanced model (10M all-rounder, CPU-able)
+python train.py --preset beast
 
 # Use with Voice AI
 python voice_ai.py --mode voice

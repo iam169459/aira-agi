@@ -40,33 +40,30 @@ case $choice in
         python voice_ai.py --mode command
         ;;
     4)
-        echo "Available training configurations:"
+        echo "Available training configurations (via the modern trainer):"
         python train_configs.py --list
         ;;
     5)
-        echo "Training coding model..."
-        echo "This will train a model optimized for coding assistance."
+        echo "Training coding model (base size on the code corpus)..."
+        echo "Grows the ONE model: aira_model.pt (auto-resumes)."
         read -p "Press Enter to start or Ctrl+C to cancel..." 
-        python train_configs.py --generate coding > train_coding.py
-        python train_coding.py
+        python train.py --preset base --data code_corpus.txt
         ;;
     6)
-        echo "Training daily conversation model..."
-        echo "This will train a model optimized for daily conversations."
+        echo "Training daily conversation model (base size)..."
+        echo "Grows the ONE model: aira_model.pt (auto-resumes)."
         read -p "Press Enter to start or Ctrl+C to cancel..." 
-        python train_configs.py --generate daily > train_daily.py
-        python train_daily.py
+        python train.py --preset base
         ;;
     7)
-        echo "Training voice model..."
-        echo "This will train a model optimized for voice interactions."
+        echo "Training voice model (nova: byte-level BPE + RoPE)..."
+        echo "Needs a GPU for long runs; grows aira_model.pt."
         read -p "Press Enter to start or Ctrl+C to cancel..." 
-        python train_configs.py --generate voice > train_voice.py
-        python train_voice.py
+        python train.py --preset nova
         ;;
     8)
-        echo "Generating text from existing model..."
-        python generate.py --checkpoint tiny_model.pt --prompt "Hello, how are you?"
+        echo "Generating text from the model (prefers aira_model.pt)..."
+        python generate.py
         ;;
     9)
         echo "Goodbye!"
