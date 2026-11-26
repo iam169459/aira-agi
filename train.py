@@ -371,6 +371,11 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         best_val = resume_state.get("best_val", best_val)
     patience_left = PATIENCE
     stopped_early = False
+    # True once an optimizer step has happened since the last eval.
+    # Evals that see an UNTRAINED model (step 0, or the first eval right
+    # after a resume) tie the stored best_val by construction and must
+    # stay patience-neutral - a tie there is expected, not stagnation.
+    trained_since_eval = False
     for micro in range(steps * GRAD_ACCUM):
         x, y = get_batch(train_data)
         _, loss = model(x, targets=y)
@@ -391,13 +396,17 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
                 best_val = metrics["val"]
                 patience_left = PATIENCE
                 save_checkpoint(step)
-            else:
+            elif trained_since_eval:
                 patience_left -= 1
                 print(f"  val not improving (best {best_val:.4f}) - "
                       f"early stop in {patience_left} evals")
                 if patience_left <= 0:
                     stopped_early = True
                     break
+            # else: patience-neutral eval - no optimizer step since the
+            # last eval (resume tie at the resumed step), so a tie with
+            # best_val is expected and burns no early-stop unit.
+            trained_since_eval = False
         if scaler is not None:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -407,6 +416,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
         optimizer.zero_grad(set_to_none=True)
+        trained_since_eval = True
         step += 1
 
     if stopped_early:

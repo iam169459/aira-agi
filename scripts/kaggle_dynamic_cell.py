@@ -109,12 +109,12 @@ if PRESET == "auto":
 else:
     why = "manually selected"
 
-prev = [] if FRESH else \
-    (glob.glob("/kaggle/input/*/aira_model.pt") or
-     ([OUT] if os.path.exists(OUT) else []))
-if prev and prev[0] != OUT:
+prev = [] if FRESH else glob.glob("/kaggle/input/*/aira_model.pt")
+if prev:
     shutil.copy(prev[0], OUT)
     print(f"Found previous checkpoint ({prev[0]}) — resuming your ONE model")
+elif os.path.exists(OUT):
+    print(f"Using existing {OUT} — resuming your ONE model")
 else:
     print("No previous checkpoint found — starting fresh")
 
