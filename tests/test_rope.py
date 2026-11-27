@@ -533,6 +533,70 @@ def test_train_optimizations():
           and "theta paragraph" in body3,
           f"added={added3}")
 
+    # drifted-corpus scenario (the live Kaggle bug): a corpus that
+    # EXISTS but lost the base text must get it back, and duplicates
+    # glued in by earlier runs must be cleaned; re-run stays idempotent
+    tmp4 = tempfile.mkdtemp()
+    os.makedirs(os.path.join(tmp4, "data"))
+    with open(os.path.join(tmp4, "data", "code_corpus.txt"), "w") as fh:
+        fh.write("def aira_base_knowledge():\n    return 'personality'\n"
+                 * 4)
+    dup = "iota paragraph that an old buggy run appended twice."
+    with open(os.path.join(tmp4, "data", "beast_corpus.txt"), "w") as fh:
+        fh.write(dup + "\n\n" + dup + "\n")
+    added4 = train_mod.grow_corpus(root=tmp4, sources=[])
+    body4 = open(os.path.join(tmp4, "data", "beast_corpus.txt")).read()
+    check("grower restores base text into a drifted corpus",
+          "aira_base_knowledge" in body4,
+          f"added={added4}")
+    check("grower cleans duplicate paragraphs",
+          body4.count("iota paragraph") == 1,
+          f"count={body4.count('iota paragraph')}")
+    added5 = train_mod.grow_corpus(root=tmp4, sources=[])
+    check("drifted-corpus repair is idempotent", added5 == 0
+          and body4 == open(os.path.join(tmp4, "data",
+                                         "beast_corpus.txt")).read())
+
+    # corpus fingerprint: checkpoints record corpus_hash, and resuming
+    # against CHANGED text resets best_val (old best measured other data)
+    tmp5 = tempfile.mkdtemp()
+    os.makedirs(os.path.join(tmp5, "data"))
+    os.makedirs(os.path.join(tmp5, "out"))
+    small = os.path.join(tmp5, "data", "small.txt")
+    with open(small, "w") as fh:
+        fh.write("kappa base line for the fingerprint test. " * 30)
+    out5 = os.path.join(tmp5, "out", "aira_model.pt")
+    train_mod.train("tiny", steps=2, data_file="small.txt", out_path=out5,
+                    root=tmp5, patience=5, eval_every=1, fresh=True,
+                    dropout=0.1)
+    ck5 = torch.load(out5, map_location="cpu", weights_only=False)
+    check("checkpoint records the corpus fingerprint",
+          bool(ck5.get("corpus_hash")))
+    buf5 = io.StringIO()
+    with redirect_stdout(buf5):
+        with open(small, "a") as fh:
+            fh.write("lambda totally new tail sentence appears. " * 30)
+        train_mod.train("tiny", steps=1, data_file="small.txt",
+                        out_path=out5, root=tmp5, patience=5,
+                        eval_every=1, fresh=False, dropout=0.1)
+    check("corpus change resets best_val tracking",
+          "resetting early-stop tracking" in buf5.getvalue())
+    ck6 = torch.load(out5, map_location="cpu", weights_only=False)
+    check("new corpus hash is stored after the reset run",
+          ck6.get("corpus_hash")
+          and ck6["corpus_hash"] != ck5["corpus_hash"])
+
+    # shuffle: same corpus -> identical fingerprint across runs (fixed
+    # seed), so resumes keep a stable split when nothing changed
+    train_mod.train("tiny", steps=1, data_file="small.txt",
+                    out_path=os.path.join(tmp5, "out", "again.pt"),
+                    root=tmp5, patience=5, eval_every=1, fresh=True,
+                    dropout=0.1)
+    ck7 = torch.load(os.path.join(tmp5, "out", "again.pt"),
+                     map_location="cpu", weights_only=False)
+    check("fixed-seed split is reproducible",
+          ck7["corpus_hash"] == ck6["corpus_hash"])
+
 
 def main():
     test_construction_compat()

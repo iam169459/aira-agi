@@ -186,11 +186,14 @@ python scripts/grow_corpus.py --dry-run    # preview only
 python train.py --preset nova --grow       # merge right before training
 ```
 
-   `grow_corpus` dedupes at the paragraph level (re-runs are
-   idempotent), backs the corpus up to `beast_corpus.txt.bak`, and
-   prints the **params-per-token report** — the number that decides
-   everything. Healthy is ~20–50; the current 0.4 MB corpus puts `nova`
-   at ~1,300. The report tells you exactly how many MB the next tier
+   `grow_corpus` dedupes at the paragraph level (whitespace-normalized,
+   re-runs are idempotent), **always keeps the base corpus** (daily
+   conversations + code) present even in sessions whose corpus file
+   drifted, **cleans duplicates** that earlier runs left behind, backs
+   the corpus up to `beast_corpus.txt.bak`, and prints the
+   **params-per-token report** — the number that decides everything.
+   Healthy is ~20–50; the current corpus puts `nova` at several hundred
+   per token. The report tells you exactly how many MB the next tier
    needs.
 
    On Kaggle, every training cell runs the same merge automatically
@@ -199,6 +202,12 @@ python train.py --preset nova --grow       # merge right before training
 
 3. Resume the same preset — BPE merges and char vocab are re-learned
    against the new corpus on resume, and the model keeps its weights.
+   Training also **shuffles paragraphs with a fixed seed** before the
+   90/10 split, so val is a fair mix of ALL sources instead of just the
+   tail of the last file. Each checkpoint stores a **corpus
+   fingerprint**: when the corpus changes (growth, dedupe, reshuffle),
+   the stored `best_val` — measured on different data — is reset
+   automatically so early stopping never compares across corpora.
 
 Because BPE packs 2.5–3.6× more text per token, `nova` also trains
 ~3× more *language* per optimizer step than the char presets —
