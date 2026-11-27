@@ -3,7 +3,9 @@
 Pure logic + tiny CPU training smoke (no voice/sounddevice imports).
 Run: python3 -m tests.test_rope
 """
+import io
 import os
+import re
 import tempfile
 
 import torch
@@ -293,8 +295,11 @@ def test_data_parallel_loss_gather():
 
 def test_early_stopping():
     print("\n[9] Early stopping keeps the best checkpoint")
+    import io
     import os
+    import re
     import tempfile
+    from contextlib import redirect_stdout
     import train as train_mod
 
     tmp = tempfile.mkdtemp()
@@ -313,17 +318,27 @@ def test_early_stopping():
     out = os.path.join(tmp, "out", "aira_model.pt")
 
     # 347k params vs 2.8KB corpus -> val bottoms out quickly, then rises
-    train_mod.train("tiny", steps=400, data_file="small.txt", out_path=out,
-                    root=tmp, patience=1, eval_every=10, fresh=True)
+    # (dropout pinned to 0.1 so the overfit dynamics stay deterministic)
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        train_mod.train("tiny", steps=400, data_file="small.txt",
+                        out_path=out, root=tmp, patience=1, eval_every=10,
+                        fresh=True, dropout=0.1)
+    evals = re.findall(
+        r"step (\d+): \{'train': [\d.]+, 'val': ([\d.]+)\}",
+        buf.getvalue())
+    best_eval_step = min(evals, key=lambda m: float(m[1]))[0]
     ck = torch.load(out, map_location="cpu", weights_only=False)
     check("early stop ended before the step budget", ck["step"] < 400,
           f"step={ck['step']}")
     check("checkpoint records the best val", ck.get("best_val") is not None
           and ck["best_val"] < 3.0, str(ck.get("best_val")))
-    # the saved model must be the BEST one (step 30 in the trace above),
-    # not the last (overfit) step - its recorded step proves which
-    check("saved step equals the best-val step", ck["step"] == 30,
-          f"step={ck['step']} best_val={ck.get('best_val')}")
+    # the saved model must be the BEST one, not the last (overfit) step:
+    # the trace's argmin val must equal the checkpoint's recorded step
+    check("saved step equals the best-val step",
+          ck["step"] == int(best_eval_step),
+          f"saved={ck['step']} trace-best={best_eval_step} "
+          f"best_val={ck.get('best_val')}")
     # the saved weights load cleanly into a fresh model built from the
     # checkpoint's own config (tiny preset here = rope off, pos_emb on)
     from ai_core.model import EmotionAwareGPT
@@ -335,7 +350,8 @@ def test_early_stopping():
     # patience=0 disables early stopping entirely
     out2 = os.path.join(tmp, "out", "full.pt")
     train_mod.train("tiny", steps=15, data_file="small.txt", out_path=out2,
-                    root=tmp, patience=0, eval_every=5, fresh=True)
+                    root=tmp, patience=0, eval_every=5, fresh=True,
+                    dropout=0.1)
     ck2 = torch.load(out2, map_location="cpu", weights_only=False)
     check("patience=0 trains the full budget", ck2["step"] >= 15,
           f"step={ck2['step']}")
@@ -370,7 +386,8 @@ def test_patience_neutral_resume():
     # eval step (a multiple of eval_every) with its best_val recorded -
     # exactly the state a Kaggle session resume starts from.
     train_mod.train("tiny", steps=400, data_file="small.txt", out_path=out,
-                    root=tmp, patience=1, eval_every=10, fresh=True)
+                    root=tmp, patience=1, eval_every=10, fresh=True,
+                    dropout=0.1)
     ck_a = torch.load(out, map_location="cpu", weights_only=False)
     check("run A stopped early at an eval boundary",
           ck_a["step"] < 400 and ck_a["step"] % 10 == 0
@@ -386,7 +403,7 @@ def test_patience_neutral_resume():
     with redirect_stdout(buf):
         train_mod.train("tiny", steps=1, data_file="small.txt",
                         out_path=out, root=tmp, patience=1,
-                        eval_every=10, fresh=False)
+                        eval_every=10, fresh=False, dropout=0.1)
     log = buf.getvalue()
     check("resume tie prints no 'val not improving'",
           "val not improving" not in log, log.strip().splitlines()[-1:])
@@ -400,6 +417,104 @@ def test_patience_neutral_resume():
           f"{ck_b.get('best_val')} vs {ck_a['best_val']}")
 
 
+def test_train_optimizations():
+    print("\n[11] LR schedule, auto dropout, weight decay, label "
+          "smoothing, corpus growth")
+    import io
+    import inspect
+    import os
+    import tempfile
+    from contextlib import redirect_stdout
+    import train as train_mod
+    from train import schedule_lr, auto_dropout, WEIGHT_DECAY, SMOOTHING
+
+    # warmup: LR ramps up, peaks exactly at the peak, then cos-decays
+    check("warmup ramps the LR up",
+          schedule_lr(0, 100, 3e-4, 10) < schedule_lr(9, 100, 3e-4, 10))
+    check("warmup reaches the peak exactly",
+          abs(schedule_lr(9, 100, 3e-4, 10) - 3e-4) < 1e-9)
+    check("cosine decays below the peak",
+          schedule_lr(50, 100, 3e-4, 10) < 3e-4)
+    check("cosine settles at the floor",
+          abs(schedule_lr(100, 100, 3e-4, 10) - 3e-4 * 0.1) < 1e-9)
+
+    # auto dropout ladder: healthy -> light, starved -> heavy
+    check("auto dropout ladder", (auto_dropout(20) == 0.1
+                                  and auto_dropout(500) == 0.2
+                                  and auto_dropout(5000) == 0.3),
+          f"{auto_dropout(20)}/{auto_dropout(500)}/{auto_dropout(5000)}")
+
+    # label smoothing: on the module, raises train loss, zeroed for eval
+    from ai_core.model import EmotionAwareGPT
+    torch.manual_seed(0)
+    m = EmotionAwareGPT(28, dict(block_size=16, n_embd=32, n_head=2,
+                                 n_layer=1, dropout=0.0, rope=False))
+    x = torch.randint(0, 28, (2, 8))
+    y = torch.randint(0, 28, (2, 8))
+    m.label_smoothing = 0.0
+    loss_exact = m(x, targets=y)[1].item()
+    m.label_smoothing = 0.5
+    loss_smooth = m(x, targets=y)[1].item()
+    # full smoothing (eps=1) makes the loss target-independent - a direct
+    # probe that the attribute actually reaches cross_entropy
+    m.label_smoothing = 1.0
+    other = torch.randint(0, 28, (2, 8))
+    loss_full_a = m(x, targets=y)[1].item()
+    loss_full_b = m(x, targets=other)[1].item()
+    check("label smoothing is wired into the loss",
+          loss_smooth != loss_exact
+          and abs(loss_full_a - loss_full_b) < 1e-5,
+          f"exact={loss_exact:.3f} smooth={loss_smooth:.3f} "
+          f"full={loss_full_a:.4f}/{loss_full_b:.4f}")
+    check("eval computes the exact loss (no smoothing)",
+          "label_smoothing" in inspect.getsource(
+              EmotionAwareGPT._forward_impl))
+
+    # weight decay: matrix weights only, 1D params excluded
+    src = inspect.getsource(train_mod.train)
+    check("AdamW splits decay / no-decay groups",
+          "weight_decay" in src and "ndim < 2" in src)
+    check("weight decay is nonzero", WEIGHT_DECAY > 0)
+    check("smoothing constant is set", SMOOTHING > 0)
+
+    # grow_corpus: dedupe, idempotence, dry-run, backup
+    tmp2 = tempfile.mkdtemp()
+    os.makedirs(os.path.join(tmp2, "data", "incoming"))
+    corpus = os.path.join(tmp2, "data", "beast_corpus.txt")
+    with open(corpus, "w") as fh:
+        fh.write("alpha paragraph about rotary embeddings.\n\n"
+                 "beta paragraph about early stopping.\n")
+    with open(os.path.join(tmp2, "data", "incoming", "new.txt"), "w") as fh:
+        fh.write("gamma paragraph arrives with fresh knowledge.\n\n"
+                 "beta paragraph about early stopping.\n\n"
+                 "delta paragraph brings entirely new facts.\n\n"
+                 "epsilon paragraph documents the cosine schedule.\n\n"
+                 "zeta paragraph explains weight decay groups.\n\n"
+                 "eta paragraph measures the data budget ratio.\n")
+    added = train_mod.grow_corpus(root=tmp2,
+                                  sources=[os.path.join(tmp2, "data",
+                                                        "incoming")])
+    body = open(corpus).read()
+    check("grow_corpus adds only new paragraphs", added > 0
+          and "gamma paragraph" in body and "delta paragraph" in body,
+          f"added={added}")
+    check("grow_corpus skips duplicates",
+          body.count("beta paragraph") == 1, f"count={body.count('beta')}")
+    check("grow_corpus wrote a backup",
+          os.path.exists(corpus + ".bak"))
+    added2 = train_mod.grow_corpus(root=tmp2,
+                                   sources=[os.path.join(tmp2, "data",
+                                                         "incoming")])
+    check("grow_corpus is idempotent on re-run", added2 == 0,
+          f"added={added2}")
+    before = open(corpus).read()
+    dry = train_mod.grow_corpus(root=tmp2, dry_run=True,
+                                sources=[os.path.join(tmp2, "data",
+                                                      "incoming")])
+    check("dry-run writes nothing", dry == 0
+          and open(corpus).read() == before)
+
+
 def main():
     test_construction_compat()
     test_rotation_math()
@@ -411,6 +526,7 @@ def main():
     test_data_parallel_loss_gather()
     test_early_stopping()
     test_patience_neutral_resume()
+    test_train_optimizations()
     print(f"\n{'=' * 50}")
     print(f"PASSED: {PASS}  FAILED: {FAIL}")
     return FAIL == 0

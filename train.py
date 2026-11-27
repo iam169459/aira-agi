@@ -1,5 +1,7 @@
 import argparse
+import math
 import os
+import shutil
 
 import torch
 from torch.nn import functional as F
@@ -64,6 +66,113 @@ PRESETS = {
     },
 }
 DROPOUT = 0.1
+# Label smoothing on the TRAIN loss only (eval loss stays exact, so val
+# numbers remain comparable across runs). Soft targets directly fight
+# the memorization of a small corpus.
+SMOOTHING = 0.1
+# AdamW weight decay for matrix weights (1D params - norms/biases - are
+# never decayed, the standard nanoGPT-style split).
+WEIGHT_DECAY = 0.01
+
+
+def schedule_lr(done, total, peak, warmup, floor_frac=0.1):
+    """LR for optimizer step ``done`` (0-based) of a ``total``-step run:
+    linear warmup to ``peak``, then cosine decay to ``peak *``
+    ``floor_frac``. Replaces the old constant LR - late-training decay
+    lets the model settle into sharper minima instead of bouncing.
+    """
+    if total <= 0:
+        return peak
+    warmup = max(1, min(warmup, total - 1))
+    if done < warmup:
+        return peak * (done + 1) / warmup
+    progress = (done - warmup) / max(1, total - warmup)
+    floor = peak * floor_frac
+    return floor + (peak - floor) * 0.5 * (
+        1.0 + math.cos(math.pi * min(progress, 1.0)))
+
+
+def auto_dropout(params_per_token):
+    """Choose dropout from the data budget (params per train token).
+    Healthy budgets (~20-50) need only light regularization; a model
+    1000x bigger than its corpus needs heavy dropout to postpone
+    memorization. The REAL fix is always more data.
+    """
+    if params_per_token <= 50:
+        return 0.1
+    if params_per_token <= 1000:
+        return 0.2
+    return 0.3
+
+
+def grow_corpus(root=ROOT, sources=None, dry_run=False, min_chars=200):
+    """Merge new text into data/beast_corpus.txt and report the gain.
+
+    ``sources`` is a list of files or directories to scan for .txt/.md
+    files; the default is <root>/data/incoming plus /kaggle/input when
+    it exists (attach your dataset in Kaggle and it just works).
+    Paragraph-level dedupe keeps re-runs idempotent - nothing is added
+    twice. The corpus is backed up to beast_corpus.txt.bak before the
+    first write of a run. Returns the number of characters added.
+    """
+    data_dir = os.path.join(root, "data")
+    corpus_path = os.path.join(data_dir, "beast_corpus.txt")
+    if sources is None:
+        sources = [os.path.join(data_dir, "incoming")]
+        if os.path.isdir("/kaggle/input"):
+            sources.append("/kaggle/input")
+    files = []
+    for src in sources:
+        if os.path.isfile(src):
+            files.append(src)
+        elif os.path.isdir(src):
+            for dirpath, _dirs, filenames in os.walk(src):
+                for name in sorted(filenames):
+                    if name.lower().endswith((".txt", ".md")):
+                        files.append(os.path.join(dirpath, name))
+    existing = ""
+    if os.path.exists(corpus_path):
+        with open(corpus_path, encoding="utf-8") as fh:
+            existing = fh.read()
+    seen = {p.strip() for p in existing.split("\n\n") if p.strip()}
+    added_paras = []
+    added_chars = 0
+    for path in files:
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as fh:
+                raw = fh.read()
+        except OSError:
+            continue
+        if "\x00" in raw[:4096] or len(raw) < min_chars:
+            continue
+        raw = raw.replace("\r\n", "\n").replace("\r", "\n")
+        for para in raw.split("\n\n"):
+            para = para.strip().rstrip("\n")
+            key = " ".join(para.split())
+            if len(key) < 40 or key in seen:
+                continue
+            seen.add(key)
+            added_paras.append(para)
+            added_chars += len(para) + 2
+    if not added_paras:
+        print("Corpus growth: no new text found (scanned "
+              f"{len(files)} file(s) in {', '.join(sources)})")
+        return 0
+    if dry_run:
+        print(f"Corpus growth (dry run): would add {added_chars:,} chars "
+              f"from {len(files)} scanned file(s)")
+        return added_chars
+    if os.path.exists(corpus_path):
+        shutil.copy(corpus_path, corpus_path + ".bak")
+    os.makedirs(data_dir, exist_ok=True)
+    with open(corpus_path, "a", encoding="utf-8") as fh:
+        # leading blank line: whatever the file ended with, the next
+        # paragraph must start a fresh \n\n-delimited block or a later
+        # run's dedupe would read the boundary as one glued paragraph
+        fh.write("\n\n" + "\n\n".join(added_paras) + "\n\n")
+    print(f"Corpus growth: +{added_chars:,} chars from {len(files)} "
+          f"scanned file(s) -> {corpus_path} (backup: .bak)")
+    return added_chars
 
 
 def _dp_scalar(loss):
@@ -137,17 +246,27 @@ def main():
                              "without a val-loss improvement and keep the "
                              "best checkpoint (0 = train all steps; "
                              "default: 10)")
+    parser.add_argument("--dropout", type=float, default=None,
+                        help="override dropout (default: auto - scales "
+                             "with how data-starved the model is)")
+    parser.add_argument("--grow", action="store_true",
+                        help="merge new text from data/incoming (and "
+                             "/kaggle/input on Kaggle) into the corpus "
+                             "before training (see scripts/grow_corpus.py)")
     args = parser.parse_args()
+    if args.grow:
+        grow_corpus()
     train(args.preset, steps=args.steps, data_file=args.data,
           out_path=args.out, fresh=args.fresh,
           tokenizer=args.tokenizer, vocab_size=args.vocab_size,
-          rope=args.rope, patience=args.patience)
+          rope=args.rope, patience=args.patience,
+          dropout=args.dropout)
 
 
 def train(preset="tiny", steps=None, data_file=None, out_path=None,
           patience=None, eval_every=None,
           root=ROOT, fresh=False, tokenizer=None, vocab_size=None,
-          rope=None):
+          rope=None, dropout=None):
     """Train EmotionAwareGPT into one growing checkpoint.
 
     ``steps`` counts optimizer steps in THIS run (each consumes
@@ -220,18 +339,36 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     if len(train_data) <= BLOCK_SIZE or len(val_data) <= BLOCK_SIZE:
         raise ValueError("Add more text so both splits exceed BLOCK_SIZE.")
 
+    # Data budget: roughly 12*L*E^2 matrix weights + embeddings. If this
+    # dwarfs the token count the model CAN only memorize - say so up
+    # front and auto-raise dropout to postpone the damage.
+    est_params = 12 * N_LAYER * N_EMBD * N_EMBD + 2 * vocab * N_EMBD
+    ppt = est_params / max(1, len(train_data))
+    if dropout is None:
+        dropout = auto_dropout(ppt)
+        if dropout != 0.1:
+            print(f"Dropout: {dropout} (auto - {ppt:,.0f} params per "
+                  "train token is data-starved; grow data/ to lower it)")
+    else:
+        dropout = float(dropout)
+
     device = ("cuda" if torch.cuda.is_available()
               else "mps" if torch.backends.mps.is_available() else "cpu")
     use_amp = device == "cuda"
     ndev = torch.cuda.device_count() if use_amp else 0
     if use_amp:
-        amp_dtype = (torch.bfloat16 if torch.cuda.is_bf16_supported()
-                     else torch.float16)
+        # Choose by HARDWARE, not by torch's bf16-support probe: pre-
+        # Ampere GPUs (T4/P100) have 2x fp16 tensor-core throughput and
+        # no bf16 units, so fp16 + GradScaler is the fast path there.
+        major = torch.cuda.get_device_capability(0)[0]
+        amp_dtype = torch.float16 if major < 8 else torch.bfloat16
         scaler = torch.amp.GradScaler(
             "cuda", enabled=amp_dtype == torch.float16)
+        torch.backends.cudnn.benchmark = True
     else:
         amp_dtype = torch.float32
         scaler = None
+    torch.set_float32_matmul_precision("high")
     if ndev > 1:
         BATCH_SIZE = BATCH_SIZE * ndev
     print("Device:", device,
@@ -240,6 +377,12 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
           "| RoPE:", "on" if rope else "off")
     print("Vocabulary size:", vocab)
     print("Characters:", len(text))
+    health = "healthy" if ppt <= 50 else (
+        "tight" if ppt <= 200 else "DATA-STARVED - val will stall; grow data/")
+    print(f"Data budget: ~{ppt:,.0f} params per train token "
+          f"(healthy is ~20-50) -> {health}")
+    print("Dropout:", dropout, "| weight decay:", WEIGHT_DECAY,
+          "| label smoothing:", SMOOTHING)
 
 
     def get_batch(source):
@@ -254,7 +397,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         "n_embd": N_EMBD,
         "n_head": N_HEAD,
         "n_layer": N_LAYER,
-        "dropout": DROPOUT,
+        "dropout": dropout,
         "rope": rope,
     }
     resume_state = None
@@ -318,18 +461,42 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         model = torch.nn.DataParallel(model)
     print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
     net = model.module if isinstance(model, torch.nn.DataParallel) else model
-    optimizer = torch.optim.AdamW(net.parameters(), lr=LEARNING_RATE)
+    net.label_smoothing = SMOOTHING
+    # Decouple AdamW weight decay: decay matrix weights only, never
+    # norms/biases (and keep eval loss exact via label_smoothing=0).
+    decay_p, no_decay_p = [], []
+    for _name, p in net.named_parameters():
+        if p.requires_grad:
+            (no_decay_p if p.ndim < 2 else decay_p).append(p)
+    optimizer = torch.optim.AdamW(
+        [{"params": decay_p, "weight_decay": WEIGHT_DECAY},
+         {"params": no_decay_p, "weight_decay": 0.0}],
+        lr=LEARNING_RATE)
     if resume_state is not None and resume_state.get("optimizer"):
         try:
             optimizer.load_state_dict(resume_state["optimizer"])
-            for group in optimizer.param_groups:
-                group["lr"] = LEARNING_RATE
         except (ValueError, KeyError):
             print("Saved optimizer state is incompatible; using a fresh one.")
+        # restore OUR group semantics (old checkpoints may differ)
+        for group, wd in zip(optimizer.param_groups,
+                             (WEIGHT_DECAY, 0.0)):
+            group["weight_decay"] = wd
+            group["lr"] = LEARNING_RATE
+
+    # Warmup + cosine decay over THIS run's step budget (re-applied on
+    # resume, so every session gets a full, sane schedule).
+    WARMUP = max(10, steps // 50)
+    LR_FLOOR_FRAC = 0.1
+    lr_now = schedule_lr(0, steps, LEARNING_RATE, WARMUP, LR_FLOOR_FRAC)
+    for group in optimizer.param_groups:
+        group["lr"] = lr_now
 
 
     @torch.no_grad()
     def estimate_loss():
+        # eval loss stays EXACT (no smoothing) so val numbers remain
+        # comparable across runs and with the stored best_val
+        net.label_smoothing = 0.0
         model.eval()
         results = {}
         for name, source in (("train", train_data), ("val", val_data)):
@@ -340,6 +507,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
                 losses.append(_dp_scalar(loss).item())
             results[name] = round(sum(losses) / len(losses), 4)
         model.train()
+        net.label_smoothing = SMOOTHING
         return results
 
 
@@ -388,7 +556,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
             continue
         if step % EVAL_EVERY == 0:
             metrics = estimate_loss()
-            print(f"step {step}: {metrics}")
+            print(f"step {step}: {metrics} lr={lr_now:.2e}")
             if PATIENCE <= 0:
                 save_checkpoint(step)
             elif metrics["val"] < best_val - 1e-4:
@@ -418,6 +586,11 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         optimizer.zero_grad(set_to_none=True)
         trained_since_eval = True
         step += 1
+        lr_now = schedule_lr(step - (resume_state.get("step", 0)
+                                     if resume_state is not None else 0),
+                             steps, LEARNING_RATE, WARMUP, LR_FLOOR_FRAC)
+        for group in optimizer.param_groups:
+            group["lr"] = lr_now
 
     if stopped_early:
         # the file already holds the best-val checkpoint; sync the live

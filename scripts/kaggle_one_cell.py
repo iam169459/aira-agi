@@ -95,7 +95,7 @@ for _name in [m for m in sys.modules
     del sys.modules[_name]
 importlib.invalidate_caches()
 
-from train import train, PRESETS   # noqa: E402
+from train import train, PRESETS, grow_corpus   # noqa: E402
 
 # --------------------------------------------------- 3) no-GPU guard ------
 if gpus == 0 and PRESET in HEAVY:
@@ -136,6 +136,17 @@ if TOKENIZER or VOCAB_SIZE or ROPE is not None:
         plan.append(f"vocab={vocab}")
     plan.append(f"rope={'on' if rope else 'off'}")
 print("Plan:", " | ".join(plan))
+
+# ------------------------------------------ 5b) grow the corpus -----------
+# Any .txt/.md in an attached Kaggle dataset is merged into the corpus
+# (paragraph-level dedupe keeps re-runs idempotent). More data is the
+# ONLY real cure for the val-loss stall - see docs/KAGGLE_TRAINING.md.
+try:
+    grow_corpus(root=REPO,
+                sources=["/kaggle/input"]
+                if os.path.isdir("/kaggle/input") else None)
+except Exception as _grow_exc:
+    print(f"Corpus growth skipped: {_grow_exc}")
 
 # ------------------------------------------------------------ 6) train ----
 # Resumes automatically if the checkpoint's architecture matches; the

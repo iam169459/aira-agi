@@ -130,7 +130,19 @@ print(f"Plan: preset={PRESET} ({why}) | steps={steps_for_estimate} "
 # stay in aira_model.pt.
 kw = {k: v for k, v in dict(steps=STEPS, patience=PATIENCE).items()
       if v is not None}
-from train import train
+
+# ------------------------------------------------------------- grow -------
+# Any .txt/.md in an attached Kaggle dataset is merged into the corpus
+# (paragraph-level dedupe keeps re-runs idempotent). More data is the
+# ONLY real cure for the val-loss stall - see docs/KAGGLE_TRAINING.md.
+from train import train, grow_corpus
+try:
+    grow_corpus(root=REPO,
+                sources=["/kaggle/input"]
+                if os.path.isdir("/kaggle/input") else None)
+except Exception as _grow_exc:
+    print(f"Corpus growth skipped: {_grow_exc}")
+
 train(PRESET, out_path=OUT, **kw)
 
 print("\nFinished. Download from the Output tab:", OUT)
