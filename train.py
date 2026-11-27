@@ -117,6 +117,15 @@ def grow_corpus(root=ROOT, sources=None, dry_run=False, min_chars=200):
     """
     data_dir = os.path.join(root, "data")
     corpus_path = os.path.join(data_dir, "beast_corpus.txt")
+    if not os.path.exists(corpus_path):
+        # beast_corpus.txt is a generated artifact (gitignored), so a
+        # fresh clone (e.g. every Kaggle session) starts WITHOUT it.
+        # Build the base corpus FIRST, or merging into an empty file
+        # would silently drop the base conversations + code corpus.
+        try:
+            build_corpus(root)
+        except FileNotFoundError:
+            pass  # no base data files either - incoming text seeds it
     if sources is None:
         sources = [os.path.join(data_dir, "incoming")]
         if os.path.isdir("/kaggle/input"):
