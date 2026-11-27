@@ -514,6 +514,25 @@ def test_train_optimizations():
     check("dry-run writes nothing", dry == 0
           and open(corpus).read() == before)
 
+    # fresh-clone scenario: beast_corpus.txt is gitignored, so it may be
+    # MISSING while the base data files exist - the grower must build
+    # the base corpus first, then merge, or the base text is lost
+    tmp3 = tempfile.mkdtemp()
+    os.makedirs(os.path.join(tmp3, "data", "incoming"))
+    with open(os.path.join(tmp3, "data", "code_corpus.txt"), "w") as fh:
+        fh.write("def aira_base_knowledge():\n    return 'personality'\n"
+                 * 4)
+    with open(os.path.join(tmp3, "data", "incoming", "new.txt"), "w") as fh:
+        fh.write("theta paragraph from an attached dataset.\n" * 8)
+    added3 = train_mod.grow_corpus(root=tmp3,
+                                   sources=[os.path.join(tmp3, "data",
+                                                         "incoming")])
+    body3 = open(os.path.join(tmp3, "data", "beast_corpus.txt")).read()
+    check("grower rebuilds the base corpus in a fresh clone",
+          "aira_base_knowledge" in body3 and added3 > 0
+          and "theta paragraph" in body3,
+          f"added={added3}")
+
 
 def main():
     test_construction_compat()
