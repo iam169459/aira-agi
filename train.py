@@ -1,6 +1,8 @@
 import argparse
+import hashlib
 import math
 import os
+import random
 import shutil
 
 import torch
@@ -105,27 +107,36 @@ def auto_dropout(params_per_token):
     return 0.3
 
 
+BASE_DATA_FILES = ("daily_conversations.txt",
+                   "combined_training_data.txt",
+                   "code_corpus.txt")
+
+
+def _para_key(para):
+    """Whitespace-collapsed identity for a paragraph - the SAME key
+    format for corpus text and incoming text, or near-identical blocks
+    with different line wrapping would dedupe-fail and re-add."""
+    return " ".join(para.split())
+
+
 def grow_corpus(root=ROOT, sources=None, dry_run=False, min_chars=200):
     """Merge new text into data/beast_corpus.txt and report the gain.
 
     ``sources`` is a list of files or directories to scan for .txt/.md
     files; the default is <root>/data/incoming plus /kaggle/input when
     it exists (attach your dataset in Kaggle and it just works).
-    Paragraph-level dedupe keeps re-runs idempotent - nothing is added
-    twice. The corpus is backed up to beast_corpus.txt.bak before the
-    first write of a run. Returns the number of characters added.
+
+    The BASE corpus files (daily conversations + code) are always
+    accounted for: beast_corpus.txt is a gitignored artifact, so old or
+    drifted sessions can hold a corpus without it - the grower rebuilds
+    it in that case instead of letting the base data silently vanish.
+    Paragraph-level dedupe (whitespace-normalized) keeps re-runs
+    idempotent and ALSO cleans duplicates that earlier runs glued into
+    the corpus. The corpus is backed up to beast_corpus.txt.bak before
+    any write. Returns the number of characters added from ``sources``.
     """
     data_dir = os.path.join(root, "data")
     corpus_path = os.path.join(data_dir, "beast_corpus.txt")
-    if not os.path.exists(corpus_path):
-        # beast_corpus.txt is a generated artifact (gitignored), so a
-        # fresh clone (e.g. every Kaggle session) starts WITHOUT it.
-        # Build the base corpus FIRST, or merging into an empty file
-        # would silently drop the base conversations + code corpus.
-        try:
-            build_corpus(root)
-        except FileNotFoundError:
-            pass  # no base data files either - incoming text seeds it
     if sources is None:
         sources = [os.path.join(data_dir, "incoming")]
         if os.path.isdir("/kaggle/input"):
@@ -139,11 +150,27 @@ def grow_corpus(root=ROOT, sources=None, dry_run=False, min_chars=200):
                 for name in sorted(filenames):
                     if name.lower().endswith((".txt", ".md")):
                         files.append(os.path.join(dirpath, name))
+
     existing = ""
     if os.path.exists(corpus_path):
         with open(corpus_path, encoding="utf-8") as fh:
             existing = fh.read()
-    seen = {p.strip() for p in existing.split("\n\n") if p.strip()}
+    existing_paras = [p for p in existing.split("\n\n") if p.strip()]
+    existing_keys = {_para_key(p) for p in existing_paras}
+
+    # base corpus health: is the base data represented in the corpus?
+    base_parts = []
+    for name in BASE_DATA_FILES:
+        path = os.path.join(data_dir, name)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                base_parts.append(fh.read().strip())
+    base_blob = "\n\n".join(base_parts)
+    base_keys = {_para_key(p) for p in base_blob.split("\n\n")
+                 if p.strip()}
+    base_in_corpus = bool(base_keys) and base_keys <= existing_keys
+
+    # new text from sources
     added_paras = []
     added_chars = 0
     for path in files:
@@ -157,30 +184,65 @@ def grow_corpus(root=ROOT, sources=None, dry_run=False, min_chars=200):
         raw = raw.replace("\r\n", "\n").replace("\r", "\n")
         for para in raw.split("\n\n"):
             para = para.strip().rstrip("\n")
-            key = " ".join(para.split())
-            if len(key) < 40 or key in seen:
+            key = _para_key(para)
+            if len(key) < 40 or key in existing_keys or key in base_keys:
                 continue
-            seen.add(key)
+            if key in {_para_key(p) for p in added_paras}:
+                continue
             added_paras.append(para)
             added_chars += len(para) + 2
-    if not added_paras:
+
+    restored_base = bool(base_blob) and not base_in_corpus
+    # rebuilt paragraph order: base first (when missing), then the
+    # existing corpus (deduped - cleans old glued duplicates), then new
+    final_paras = []
+    seen = set()
+
+    def _push(p):
+        p = p.strip().rstrip("\n")
+        if not p:
+            return
+        key = _para_key(p)
+        if key in seen:
+            return
+        seen.add(key)
+        final_paras.append(p)
+
+    if restored_base:
+        for p in base_blob.split("\n\n"):
+            _push(p)
+    for p in existing_paras:
+        _push(p)
+    for p in added_paras:
+        _push(p)
+    base_para_count = len([p for p in base_blob.split("\n\n") if p.strip()])
+    cleaned_dups = len(existing_paras) - (len(final_paras)
+                                          - len(added_paras)
+                                          - (base_para_count
+                                             if restored_base else 0))
+
+    if not added_paras and not restored_base and cleaned_dups <= 0:
         print("Corpus growth: no new text found (scanned "
               f"{len(files)} file(s) in {', '.join(sources)})")
         return 0
     if dry_run:
         print(f"Corpus growth (dry run): would add {added_chars:,} chars "
-              f"from {len(files)} scanned file(s)")
+              f"from {len(files)} scanned file(s)"
+              + (" + restore the base corpus" if restored_base else ""))
         return added_chars
     if os.path.exists(corpus_path):
         shutil.copy(corpus_path, corpus_path + ".bak")
     os.makedirs(data_dir, exist_ok=True)
-    with open(corpus_path, "a", encoding="utf-8") as fh:
-        # leading blank line: whatever the file ended with, the next
-        # paragraph must start a fresh \n\n-delimited block or a later
-        # run's dedupe would read the boundary as one glued paragraph
-        fh.write("\n\n" + "\n\n".join(added_paras) + "\n\n")
+    with open(corpus_path, "w", encoding="utf-8") as fh:
+        fh.write("\n\n".join(final_paras) + "\n\n")
+    notes = []
+    if restored_base:
+        notes.append("base corpus restored")
+    if cleaned_dups > 0:
+        notes.append(f"removed {cleaned_dups} duplicate paragraph(s)")
+    note = (" (" + "; ".join(notes) + ")") if notes else ""
     print(f"Corpus growth: +{added_chars:,} chars from {len(files)} "
-          f"scanned file(s) -> {corpus_path} (backup: .bak)")
+          f"scanned file(s) -> {corpus_path}{note} (backup: .bak)")
     return added_chars
 
 
@@ -322,6 +384,16 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
             "for this starter configuration. Add more text."
         )
 
+    # Shuffle paragraphs with a FIXED seed before the split. The raw
+    # 90/10 split takes the tail of the file, so with several merged
+    # sources val would be ONLY the last source (and train would never
+    # see it). Shuffling mixes every source into both splits; the fixed
+    # seed keeps the split identical across resume runs.
+    paras = [p for p in text.split("\n\n") if p.strip()]
+    random.Random(42).shuffle(paras)
+    text = "\n\n".join(paras)
+    CORPUS_HASH = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+
     use_bpe = tokenizer == "bpe"
     tok = None
     if use_bpe:
@@ -410,6 +482,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
         "rope": rope,
     }
     resume_state = None
+    corpus_changed = False
     if not fresh and os.path.exists(CHECKPOINT):
         try:
             saved = torch.load(CHECKPOINT, map_location="cpu",
@@ -438,6 +511,11 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
                     "deliberately replace it, or --out to keep both.")
             else:
                 resume_state = saved
+                corpus_changed = saved.get("corpus_hash") != CORPUS_HASH
+                if corpus_changed:
+                    print("Corpus changed since this checkpoint (grown, "
+                          "cleaned or reshuffled) - old best_val measured "
+                          "different data, resetting early-stop tracking")
                 if use_bpe:
                     tok = BPETokenizer.from_state(saved["tokenizer"])
                     encoded = torch.tensor(tok.encode(text),
@@ -535,6 +613,7 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
                 "step": current_step,
                 "optimizer": optimizer.state_dict(),
                 "best_val": best_val if best_val != float("inf") else None,
+                "corpus_hash": CORPUS_HASH,
                 **blob,
             },
             CHECKPOINT,
@@ -546,6 +625,8 @@ def train(preset="tiny", steps=None, data_file=None, out_path=None,
     best_val = float("inf")
     if resume_state is not None:
         best_val = resume_state.get("best_val", best_val)
+    if resume_state is not None and corpus_changed:
+        best_val = float("inf")
     patience_left = PATIENCE
     stopped_early = False
     # True once an optimizer step has happened since the last eval.
