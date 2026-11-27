@@ -234,8 +234,12 @@ class EmotionAwareGPT(nn.Module):
         logits = self.head(self.ln(x))
         if targets is None:
             return logits
+        # label_smoothing is set by the trainer on the live module (0.0
+        # during eval) - a soft-target regularizer that directly fights
+        # memorization of a small corpus.
         loss = F.cross_entropy(
-            logits.reshape(-1, logits.size(-1)), targets.reshape(-1)
+            logits.reshape(-1, logits.size(-1)), targets.reshape(-1),
+            label_smoothing=getattr(self, "label_smoothing", 0.0),
         )
         return logits, loss
 

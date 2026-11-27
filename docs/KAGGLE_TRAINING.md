@@ -175,14 +175,27 @@ python train.py --preset titan    # only after §6 corpus growth
 To raise the corpus ceiling (currently ~0.4 MB → target ≥ 100 MB before
 `titan` or `nova` long runs make sense):
 
-1. Drop text files into `data/` (conversations, code, documentation —
-   anything you own or have the rights to use).
-2. Rebuild the combined corpus:
+1. Drop `.txt`/`.md` files into `data/incoming/` — or, on Kaggle, upload
+   them as a Dataset and attach it (the training cells pick them up
+   automatically).
+2. Merge + report:
 
-```python
-from train import build_corpus
-build_corpus()   # rewrites data/beast_corpus.txt from everything in data/
+```bash
+python scripts/grow_corpus.py              # merge + data-budget report
+python scripts/grow_corpus.py --dry-run    # preview only
+python train.py --preset nova --grow       # merge right before training
 ```
+
+   `grow_corpus` dedupes at the paragraph level (re-runs are
+   idempotent), backs the corpus up to `beast_corpus.txt.bak`, and
+   prints the **params-per-token report** — the number that decides
+   everything. Healthy is ~20–50; the current 0.4 MB corpus puts `nova`
+   at ~1,300. The report tells you exactly how many MB the next tier
+   needs.
+
+   On Kaggle, every training cell runs the same merge automatically
+   before training — attach a dataset of `.txt` files and it just
+   works.
 
 3. Resume the same preset — BPE merges and char vocab are re-learned
    against the new corpus on resume, and the model keeps its weights.
@@ -216,7 +229,7 @@ Early stopping (default `--patience 10`): training saves the checkpoint **only w
 | Resume raises model-size error | checkpoint from a different preset size | matching preset resumes; else `--fresh`/`--out` |
 | Resume raises tokenizer error | char↔BPE checkpoint mismatch | same — deliberate switch, `--fresh` or `--out` |
 | Resume raises `rope=` mismatch | mixed positional schemes | same pattern |
-| Train loss 0.02, val loss flat/rising | overfitting (corpus < model) | automatic since PR #30: **early stopping** ends the run after 10 non-improving evals and keeps the BEST checkpoint (`--patience 0` disables; `--patience N` tunes). Real fix: §6 grow corpus |
+| Train loss 0.02, val loss flat/rising | overfitting (corpus < model) | automatic since PR #30: **early stopping** ends the run after 10 non-improving evals and keeps the BEST checkpoint (`--patience 0` disables; `--patience N` tunes). PR #32 adds **auto dropout** (rises when the data budget is starved), decoupled weight decay, label smoothing, and a warmup+cosine LR schedule to postpone it. Real fix: §6 grow corpus |
 | Session died mid-run | 12 h cap | §5: checkpoint is on disk at last eval; reattach + copy + rerun |
 | Generation rambling/nonsense | model still young | more steps and/or corpus; try lower `--temperature` in `generate.py` |
 

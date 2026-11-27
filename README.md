@@ -6,7 +6,8 @@
 
 ## What's inside
 
-- **A brain that talks** — a custom emotion-aware transformer (`ai_core/`) with modern sampling controls, conversation memory that survives restarts, and always-on supervision so Aira never fully "sleeps". Training has built-in **early stopping**: when the validation loss stops improving (she has memorized a small corpus), the run ends and the **best** checkpoint is kept — `aira_model.pt` never degrades from overfitting.
+- **A brain that talks** — a custom emotion-aware transformer (`ai_core/`) with modern sampling controls, conversation memory that survives restarts, and always-on supervision so Aira never fully "sleeps". Training has built-in **early stopping**: when the validation loss stops improving (she has memorized a small corpus), the run ends and the **best** checkpoint is kept — `aira_model.pt` never degrades from overfitting. Anti-memorization is built in: **auto dropout** (scales with how data-starved the model is), **decoupled weight decay**, **label smoothing** on the train loss, and a **warmup + cosine LR schedule**. A `--data-budget`-style report prints params-per-token — the one number that says whether more steps or more data is the fix.
+- **A corpus that grows** — `python scripts/grow_corpus.py` (or `python train.py --grow`) merges any new `.txt`/`.md` from `data/incoming/` or an attached Kaggle dataset into `beast_corpus.txt`: paragraph-level dedupe (idempotent re-runs), automatic `.bak` backup, and a stats report telling you exactly how much text the next size tier needs. Kaggle cells run it automatically each session.
 - **A voice made from zero** — text-to-speech and speech-to-text built on pure numpy (`modules/natural_speech/`): grapheme-to-phoneme, glottal-pulse synthesis, prosody. She sounds human, and her voice changes with her mood.
 - **A personality** — Aira answers in her own voice, picks up your mood, and tunes how creative or steady her answers are depending on it.
 - **Hands for everyday tasks** — built-in tool skills (`ai_core/tools.py` + `ai_core/more_tools.py`): exact arithmetic, unit conversion, persistent notes, safe file reading, base64/JSON handling, hashing, secure password and UUID generation, dice/coin randomness, system status, and a full skills directory — just ask ("convert 5 km to miles", "generate a strong password 24", "what can you do").
@@ -75,7 +76,13 @@ python train.py --preset nova      # 91.3M — BPE 4096 + RoPE by default, 20K s
 
 Drop more text into `data/`, rerun `python -c "import train;
 train.build_corpus()"`, and keep training — the same model keeps
-growing.
+growing. Or just drop `.txt`/`.md` files into `data/incoming/` and run
+`python scripts/grow_corpus.py` — it dedupes, merges, backs up, and
+prints the params-per-token health report.
+
+```bash
+python scripts/grow_corpus.py --dry-run   # preview + data-budget report
+```
 
 ---
 
@@ -87,7 +94,7 @@ Aira's security tools only touch targets **you own or have permission to test**.
 
 ## Testing
 
-The whole suite is green — **698 checks across 17 suites, 0 failures** —
+The whole suite is green — **713 checks across 17 suites, 0 failures** —
 covering the voice engine, the transformer, the tokenizer (char +
 byte-level BPE), RoPE positional encoding, the agent brain, the tool
 skills, the daemon, cybersecurity tooling (defense + consent-gated
@@ -103,7 +110,7 @@ two-way interruption system:
 | test_beast_mode | 93 | test_natural_speech | 42 |
 | test_dev_skills | 55 | test_interrupt | 83 |
 | test_cyber_tools | 48 | test_tokenizer | 43 |
-| test_cyber_offense | 19 | test_rope | 42 |
+| test_cyber_offense | 19 | test_rope | 57 |
 | | | test_weapon_encyclopedia | 41 |
 
 ```bash
